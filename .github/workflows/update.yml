@@ -1,4 +1,4 @@
-name: RootApp Auto-Update
+name: Packages Auto-Update
 
 on:
   schedule:
@@ -12,29 +12,43 @@ jobs:
       contents: write
       
     steps:
-      - name: Checkout Repository
+      - name: Checkout Repo
         uses: actions/checkout@v5
 
       - name: Install Nix
         uses: cachix/install-nix-action@v22
 
-      - name: Check for Updates and Update Hash
+      - name: Update Packages
         run: |
-          OLD_HASH=$(grep -oP 'hash = "\K[^"]+' flake.nix)
-          NEW_HASH=$(nix store prefetch-file https://installer.rootapp.com/installer/Linux/X64/Root.AppImage --json | jq -r .hash)
-          
-          echo "Current Hash: $OLD_HASH"
-          echo "Live Hash: $NEW_HASH"
+          UPDATED=0
 
-          if [ "$OLD_HASH" != "$NEW_HASH" ]; then
-            echo "Updates found! Pushing new hash to flake.nix..."
-            sed -i "s|$OLD_HASH|$NEW_HASH|g" flake.nix
+          # RootApp Update
+          ROOT_OLD_HASH=$(awk '/pname = "rootapp"/{f=1} f && /hash = /{print $0; f=0}' flake.nix | grep -oP '"\K[^"]+')
+          ROOT_NEW_HASH=$(nix store prefetch-file https://installer.rootapp.com/installer/Linux/X64/Root.AppImage --json | jq -r .hash)
+
+          if [ "$ROOT_OLD_HASH" != "$ROOT_NEW_HASH" ] && [ -n "$ROOT_NEW_HASH" ]; then
+            sed -i '/pname = "rootapp"/,/hash =/ s|hash = ".*"|hash = "'"$ROOT_NEW_HASH"'"|' flake.nix
+            UPDATED=1
+          fi
+
+          # Opencode Update
+          OPEN_OLD_VER=$(awk '/pname = "opencode-desktop"/{f=1} f && /version = /{print $0; f=0}' flake.nix | grep -oP '"\K[^"]+')
+          OPEN_NEW_VER=$(curl -sL https://api.github.com/repos/anomalyco/opencode/releases/latest | jq -r .tag_name)
+
+          if [ "$OPEN_OLD_VER" != "$OPEN_NEW_VER" ] && [ "$OPEN_NEW_VER" != "null" ]; then
+            OPEN_NEW_URL="https://github.com/anomalyco/opencode/releases/download/${OPEN_NEW_VER}/opencode-desktop-linux-x86_64.AppImage"
+            OPEN_NEW_HASH=$(nix store prefetch-file "$OPEN_NEW_URL" --json | jq -r .hash)
             
+            sed -i '/pname = "opencode-desktop"/,/version =/ s|version = ".*"|version = "'"$OPEN_NEW_VER"'"|' flake.nix
+            sed -i '/pname = "opencode-desktop"/,/hash =/ s|hash = ".*"|hash = "'"$OPEN_NEW_HASH"'"|' flake.nix
+            UPDATED=1
+          fi
+
+          # Commit
+          if [ "$UPDATED" -eq 1 ]; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add flake.nix
-            git commit -m "chore: auto-update RootApp hash"
+            git commit -m "chore: auto-update packages"
             git push
-          else
-            echo "AppImage is up to date. No action needed."
           fi
