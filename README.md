@@ -36,16 +36,17 @@ Open your system's `flake.nix` and add this repository to your `inputs` block:
 
 ### 2. Install the Packages
 
-Pass the input to your system configuration and add the desired applications to your `environment.systemPackages`:
+Pass the inputs to your system configuration and add the desired applications to your `environment.systemPackages`:
 
 ```nix
-  outputs = { self, nixpkgs, ackerman-packages, ... }: {
+  outputs = { self, nixpkgs, ... } @ inputs: {
     nixosConfigurations.yourhostname = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
+      specialArgs = { inherit inputs; };
       modules = [
         ./configuration.nix
         
-        ({ pkgs, ... }: {
+        ({ pkgs, inputs, ... }: {
           environment.systemPackages = [
             # Add the packages here
             inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.rootapp
