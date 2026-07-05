@@ -42,7 +42,7 @@
           version = "v1.17.13";
           src = pkgs.fetchurl {
             url = "https://github.com/anomalyco/opencode/releases/download/${version}/opencode-desktop-linux-x86_64.AppImage";
-            hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+            hash = "sha256-GLBb9J6odoOiGZL+m37f3r6Sd55dt/69PEFAarsvvu4=";
           };
           appimageContents = pkgs.appimageTools.extractType2 { inherit pname version src; };
         in pkgs.appimageTools.wrapType2 {
