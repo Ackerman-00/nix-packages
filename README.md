@@ -26,8 +26,8 @@ Open your system's `flake.nix` and add this repository to your `inputs` block:
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     
     # Add Ackerman's Packages Flake
-    ackerman-packages = {
-      url = "github:Ackerman-00/ackerman-packages";
+    nix-packages = {
+      url = "github:Ackerman-00/nix-packages";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
@@ -48,8 +48,8 @@ Pass the input to your system configuration and add the desired applications to 
         ({ pkgs, ... }: {
           environment.systemPackages = [
             # Add the packages here
-            ackerman-packages.packages.${pkgs.system}.rootapp
-            ackerman-packages.packages.${pkgs.system}.opencode
+            inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.rootapp
+            inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.opencode
           ];
         })
       ];
@@ -66,9 +66,9 @@ You can test or run these applications directly from the terminal without perman
 
 ```bash
 # Run RootApp
-nix run github:Ackerman-00/ackerman-packages#rootapp
+nix run github:Ackerman-00/nix-packages#rootapp
 
 # Run Opencode
-nix run github:Ackerman-00/ackerman-packages#opencode
+nix run github:Ackerman-00/nix-packages#opencode
 
 ```
