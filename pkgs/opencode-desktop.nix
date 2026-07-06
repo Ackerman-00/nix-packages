@@ -3,7 +3,7 @@
 let
   electron = electron_42;
 in
-pkgs.stdenvNoCC.mkDerivation rec {
+pkgs.stdenv.mkDerivation rec {
   pname = "opencode-desktop";
   version = "v1.17.13";
 
@@ -16,10 +16,16 @@ pkgs.stdenvNoCC.mkDerivation rec {
     dpkg
     makeBinaryWrapper
     copyDesktopItems
+    autoPatchelfHook
   ];
 
   buildInputs = with pkgs; [
-    (lib.getLib stdenv.cc.cc)
+    stdenv.cc.cc.lib
+  ];
+
+  autoPatchelfIgnoreMissingDeps = [
+    "libc.musl-x86_64.so.1"
+    "libc.musl-x86_64.so"
   ];
 
   desktopItems = [
