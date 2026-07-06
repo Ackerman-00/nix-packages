@@ -49,7 +49,7 @@
           
           src = pkgs.fetchurl {
             url = "https://github.com/anomalyco/opencode/releases/download/${version}/opencode-desktop-linux-amd64.deb";
-            hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+            hash = "sha256-nNLwVibk64w7C76xP8mgh1VYeQp+iNPDzd+dsRoQVBo=";
           };
 
           nativeBuildInputs = with pkgs; [
