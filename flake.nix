@@ -56,7 +56,7 @@
             [Desktop Entry]
             Type=Application
             Name=Opencode
-            Exec=opencode-desktop
+            Exec=opencode-desktop --enable-features=UseOzonePlatform,WaylandWindowDecorations --ozone-platform=wayland --enable-gpu-rasterization --enable-zero-copy
             Icon=opencode
             Categories=Development;
             Terminal=false
