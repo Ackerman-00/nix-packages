@@ -12,9 +12,6 @@
     in {
       packages.${system} = {
         
-        # ==========================================
-        # PACKAGE 1: ROOTAPP (Keep as AppImage)
-        # ==========================================
         rootapp = let
           pname = "rootapp";
           version = "latest";
@@ -40,9 +37,6 @@
           '';
         };
 
-        # ==========================================
-        # PACKAGE 2: OPENCODE (Switched to .deb FHS)
-        # ==========================================
         opencode = pkgs.stdenv.mkDerivation rec {
           pname = "opencode-desktop";
           version = "v1.17.13";
@@ -58,13 +52,16 @@
             autoPatchelfHook
           ];
 
-          # NixOS libraries
           buildInputs = with pkgs; [
             alsa-lib at-spi2-atk at-spi2-core atk cairo cups dbus expat fontconfig
             freetype gdk-pixbuf glib gtk3 libdrm libnotify libxkbcommon mesa nspr nss
-            pango systemd xorg.libX11 xorg.libXScrnSaver xorg.libXcomposite xorg.libXcursor
-            xorg.libXdamage xorg.libXext xorg.libXfixes xorg.libXi xorg.libXrandr xorg.libXrender
-            xorg.libXtst xorg.libxcb xorg.libxkbfile xorg.libxshmfence
+            pango systemd libx11 libxscrnsaver libxcomposite libxcursor
+            libxdamage libxext libxfixes libxi libxrandr libxrender
+            libxtst libxcb libxkbfile libxshmfence
+          ];
+
+          autoPatchelfIgnoreMissingDeps = [
+            "libc.musl-x86_64.so.1"
           ];
 
           unpackPhase = ''
@@ -74,23 +71,20 @@
           installPhase = ''
             runHook preInstall
             
-            # The .deb extracts 
             mkdir -p $out/bin $out/share
             cp -R opt/ $out/
             cp -R usr/share/* $out/share/
 
-            # Dynamically locate the binary folder
+            find $out/opt -type d -name "*musl*" -exec rm -rf {} + 2>/dev/null || true
+
             APP_DIR=$(find $out/opt -maxdepth 1 -mindepth 1 -type d)
             APP_BINARY=$(find "$APP_DIR" -maxdepth 1 -type f -executable | head -n 1)
 
-            # Link the binary to $out/bin
             ln -s "$APP_BINARY" $out/bin/opencode-desktop
 
-            # the Wayland flags
             wrapProgram $out/bin/opencode-desktop \
               --add-flags "--ozone-platform-hint=wayland --enable-features=WaylandWindowDecorations,UseOzonePlatform --enable-gpu-rasterization --enable-zero-copy"
 
-            # provided .desktop file to use wrapped binary
             sed -i "s|Exec=.*|Exec=$out/bin/opencode-desktop %U|g" $out/share/applications/*.desktop
 
             runHook postInstall
