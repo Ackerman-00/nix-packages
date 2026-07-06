@@ -12,6 +12,9 @@
     in {
       packages.${system} = {
         
+        # ==========================================
+        # PACKAGE 1: ROOTAPP (Keep as AppImage)
+        # ==========================================
         rootapp = let
           pname = "rootapp";
           version = "latest";
@@ -37,30 +40,60 @@
           '';
         };
 
-        opencode = let
+        # ==========================================
+        # PACKAGE 2: OPENCODE (Switched to .deb FHS)
+        # ==========================================
+        opencode = pkgs.stdenv.mkDerivation rec {
           pname = "opencode-desktop";
           version = "v1.17.13";
+          
           src = pkgs.fetchurl {
-            url = "https://github.com/anomalyco/opencode/releases/download/${version}/opencode-desktop-linux-x86_64.AppImage";
-            hash = "sha256-GLBb9J6odoOiGZL+m37f3r6Sd55dt/69PEFAarsvvu4=";
+            url = "https://github.com/anomalyco/opencode/releases/download/${version}/opencode-desktop-linux-amd64.deb";
+            hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
           };
-          appimageContents = pkgs.appimageTools.extractType2 { inherit pname version src; };
-        in pkgs.appimageTools.wrapType2 {
-          inherit pname version src;
-          extraInstallCommands = ''
-            if [ -f ${appimageContents}/.DirIcon ]; then
-              install -m 444 -D ${appimageContents}/.DirIcon $out/share/icons/hicolor/256x256/apps/opencode.png
-            fi
-            mkdir -p $out/share/applications
-            cat > $out/share/applications/opencode.desktop <<EOF
-            [Desktop Entry]
-            Type=Application
-            Name=Opencode
-            Exec=opencode-desktop --enable-features=UseOzonePlatform,WaylandWindowDecorations --ozone-platform=wayland --enable-gpu-rasterization --enable-zero-copy
-            Icon=opencode
-            Categories=Development;
-            Terminal=false
-            EOF
+
+          nativeBuildInputs = with pkgs; [
+            dpkg
+            makeWrapper
+            autoPatchelfHook
+          ];
+
+          # NixOS libraries
+          buildInputs = with pkgs; [
+            alsa-lib at-spi2-atk at-spi2-core atk cairo cups dbus expat fontconfig
+            freetype gdk-pixbuf glib gtk3 libdrm libnotify libxkbcommon mesa nspr nss
+            pango systemd xorg.libX11 xorg.libXScrnSaver xorg.libXcomposite xorg.libXcursor
+            xorg.libXdamage xorg.libXext xorg.libXfixes xorg.libXi xorg.libXrandr xorg.libXrender
+            xorg.libXtst xorg.libxcb xorg.libxkbfile xorg.libxshmfence
+          ];
+
+          unpackPhase = ''
+            dpkg -x $src .
+          '';
+
+          installPhase = ''
+            runHook preInstall
+            
+            # The .deb extracts 
+            mkdir -p $out/bin $out/share
+            cp -R opt/ $out/
+            cp -R usr/share/* $out/share/
+
+            # Dynamically locate the binary folder
+            APP_DIR=$(find $out/opt -maxdepth 1 -mindepth 1 -type d)
+            APP_BINARY=$(find "$APP_DIR" -maxdepth 1 -type f -executable | head -n 1)
+
+            # Link the binary to $out/bin
+            ln -s "$APP_BINARY" $out/bin/opencode-desktop
+
+            # the Wayland flags
+            wrapProgram $out/bin/opencode-desktop \
+              --add-flags "--ozone-platform-hint=wayland --enable-features=WaylandWindowDecorations,UseOzonePlatform --enable-gpu-rasterization --enable-zero-copy"
+
+            # provided .desktop file to use wrapped binary
+            sed -i "s|Exec=.*|Exec=$out/bin/opencode-desktop %U|g" $out/share/applications/*.desktop
+
+            runHook postInstall
           '';
         };
 
