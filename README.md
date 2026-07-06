@@ -1,21 +1,20 @@
-# 🚀 Ackerman's NixOS Packages
+# Ackerman's NixOS Packages
 
-A pure, zero-maintenance NixOS flake for installing and running custom AppImages like **RootApp** and **Opencode Desktop**.
+Zero-maintenance NixOS flake for **RootApp** and **OpenCode Desktop**.
 
-## 📦 Available Packages
+## Packages
 
-* `rootapp` - Root Field Service Management
-* `opencode` - Opencode Desktop Application
+* `rootapp` — Root Field Service Management (AppImage)
+* `opencode-desktop` — AI coding agent desktop client (.deb)
 
-## ✨ Features
+## Features
 
-* **Completely Pure:** No mutable files in `/var/lib/` or background downloads on your local machine.
-* **Desktop Integration:** Automatically extracts the native official logos from the AppImages and installs fully functional `.desktop` entries for your Wayland/X11 compositor or DE.
-* **Zero-Maintenance:** A GitHub Actions workflow automatically checks upstream APIs and URLs daily, automatically updating the flake versions and hashes when new updates drop.
+* **Desktop Integration:** Ships proper `.desktop` entries and icons for Wayland/X11.
+* **Zero-Maintenance:** GitHub Actions checks upstream daily and auto-updates versions and hashes.
 
 ---
 
-## 🛠️ How to Add it to your NixOS System
+## How to Add it to your NixOS System
 
 ### 1. Add the Input
 
@@ -50,7 +49,7 @@ Pass the inputs to your system configuration and add the desired applications to
           environment.systemPackages = [
             # Add the packages here
             inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.rootapp
-            inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.opencode
+            inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.opencode-desktop
           ];
         })
       ];
@@ -59,17 +58,9 @@ Pass the inputs to your system configuration and add the desired applications to
 
 ```
 
----
-
-## 🏃 Run Without Installing
-
-You can test or run these applications directly from the terminal without permanently adding them to your system configuration:
+## Run Without Installing
 
 ```bash
-# Run RootApp
 nix run github:Ackerman-00/nix-packages#rootapp
-
-# Run Opencode
-nix run github:Ackerman-00/nix-packages#opencode
-
+nix run github:Ackerman-00/nix-packages#opencode-desktop
 ```

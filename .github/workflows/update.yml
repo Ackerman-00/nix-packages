@@ -23,24 +23,24 @@ jobs:
           UPDATED=0
 
           # RootApp Update
-          ROOT_OLD_HASH=$(awk '/pname = "rootapp"/{f=1} f && /hash = /{print $0; f=0}' flake.nix | grep -oP '"\K[^"]+')
+          ROOT_OLD_HASH=$(grep -oP 'hash = "\K[^"]+' pkgs/rootapp.nix)
           ROOT_NEW_HASH=$(nix store prefetch-file https://installer.rootapp.com/installer/Linux/X64/Root.AppImage --json | jq -r .hash)
 
           if [ "$ROOT_OLD_HASH" != "$ROOT_NEW_HASH" ] && [ -n "$ROOT_NEW_HASH" ]; then
-            sed -i '/pname = "rootapp"/,/hash =/ s|hash = ".*"|hash = "'"$ROOT_NEW_HASH"'"|' flake.nix
+            sed -i '/url = "https:\/\/installer.rootapp.com\/installer\/Linux\/X64\/Root.AppImage"/,/hash =/ s|hash = ".*"|hash = "'"$ROOT_NEW_HASH"'"|' pkgs/rootapp.nix
             UPDATED=1
           fi
 
-          # Opencode Update
-          OPEN_OLD_VER=$(awk '/pname = "opencode-desktop"/{f=1} f && /version = /{print $0; f=0}' flake.nix | grep -oP '"\K[^"]+')
+          # Opencode Desktop Update
+          OPEN_OLD_VER=$(grep -oP 'version = "\K[^"]+' pkgs/opencode-desktop.nix)
           OPEN_NEW_VER=$(curl -sL https://api.github.com/repos/anomalyco/opencode/releases/latest | jq -r .tag_name)
 
           if [ "$OPEN_OLD_VER" != "$OPEN_NEW_VER" ] && [ "$OPEN_NEW_VER" != "null" ]; then
             OPEN_NEW_URL="https://github.com/anomalyco/opencode/releases/download/${OPEN_NEW_VER}/opencode-desktop-linux-amd64.deb"
             OPEN_NEW_HASH=$(nix store prefetch-file "$OPEN_NEW_URL" --json | jq -r .hash)
-            
-            sed -i '/pname = "opencode-desktop"/,/version =/ s|version = ".*"|version = "'"$OPEN_NEW_VER"'"|' flake.nix
-            sed -i '/pname = "opencode-desktop"/,/hash =/ s|hash = ".*"|hash = "'"$OPEN_NEW_HASH"'"|' flake.nix
+
+            sed -i 's|version = ".*"|version = "'"$OPEN_NEW_VER"'"|' pkgs/opencode-desktop.nix
+            sed -i '/url = "https:\/\/github.com\/anomalyco\/opencode\/releases\/download/,/hash =/ s|hash = ".*"|hash = "'"$OPEN_NEW_HASH"'"|' pkgs/opencode-desktop.nix
             UPDATED=1
           fi
 
@@ -48,7 +48,7 @@ jobs:
           if [ "$UPDATED" -eq 1 ]; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add flake.nix
+            git add pkgs/rootapp.nix pkgs/opencode-desktop.nix
             git commit -m "chore: auto-update packages"
             git push
           fi
