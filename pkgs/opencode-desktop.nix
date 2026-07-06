@@ -66,14 +66,17 @@ pkgs.stdenv.mkDerivation rec {
       APP_BINARY=$(find "$APP_DIR" -maxdepth 1 -type f -executable ! -name '*.so' ! -name 'chrome-sandbox' ! -name 'chrome_crashpad_handler' | head -1)
     fi
 
-    wrapProgram "$APP_BINARY" \
+    # Don't wrapProgram the binary in-place — that creates a bash script at the
+    # original path, breaking Electron's GPU/utility subprocess spawning (they
+    # re-exec /proc/self/exe and get the wrapper instead of the real ELF).
+    # Instead make a separate launcher script.
+    makeWrapper "$APP_BINARY" $out/bin/opencode-desktop \
       --add-flags "--no-sandbox" \
       --add-flags "--use-angle=swiftshader" \
       --add-flags "''${NIXOS_OZONE_WL:+''${WAYLAND_DISPLAY:+--ozone-platform-hint=auto --enable-features=WaylandWindowDecorations,UseOzonePlatform}}" \
       --prefix LD_LIBRARY_PATH : "${pkgs.libglvnd}/lib" \
+      --prefix LD_LIBRARY_PATH : "${pkgs.stdenv.cc.cc.lib}/lib" \
       --set GSETTINGS_SCHEMAS_DIR "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}/glib-2.0/schemas"
-
-    ln -s "$APP_BINARY" $out/bin/opencode-desktop
 
     # Rename icons to match desktop item name
     for size in 32 64 128; do
