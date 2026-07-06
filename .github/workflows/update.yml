@@ -36,7 +36,7 @@ jobs:
           OPEN_NEW_VER=$(curl -sL https://api.github.com/repos/anomalyco/opencode/releases/latest | jq -r .tag_name)
 
           if [ "$OPEN_OLD_VER" != "$OPEN_NEW_VER" ] && [ "$OPEN_NEW_VER" != "null" ]; then
-            OPEN_NEW_URL="https://github.com/anomalyco/opencode/releases/download/${OPEN_NEW_VER}/opencode-desktop-linux-x86_64.AppImage"
+            OPEN_NEW_URL="https://github.com/anomalyco/opencode/releases/download/${OPEN_NEW_VER}/opencode-desktop-linux-amd64.deb"
             OPEN_NEW_HASH=$(nix store prefetch-file "$OPEN_NEW_URL" --json | jq -r .hash)
             
             sed -i '/pname = "opencode-desktop"/,/version =/ s|version = ".*"|version = "'"$OPEN_NEW_VER"'"|' flake.nix
