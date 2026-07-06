@@ -1,6 +1,9 @@
-{ pkgs, lib }:
+{ pkgs, lib, electron_42 ? null }:
 
-pkgs.stdenv.mkDerivation rec {
+let
+  electron = electron_42;
+in
+pkgs.stdenvNoCC.mkDerivation rec {
   pname = "opencode-desktop";
   version = "v1.17.13";
 
@@ -11,24 +14,12 @@ pkgs.stdenv.mkDerivation rec {
 
   nativeBuildInputs = with pkgs; [
     dpkg
-    makeWrapper
-    autoPatchelfHook
+    makeBinaryWrapper
     copyDesktopItems
   ];
 
   buildInputs = with pkgs; [
-    alsa-lib at-spi2-atk at-spi2-core atk cairo cups dbus expat fontconfig
-    freetype gdk-pixbuf glib gtk3 libdrm libglvnd libnotify libxkbcommon
-    mesa nspr nss pango systemd
-    libx11 libxscrnsaver libxcomposite libxcursor
-    libxdamage libxext libxfixes libxi libxrandr libxrender
-    libxtst libxcb libxkbfile libxshmfence
-    stdenv.cc.cc.lib
-    gsettings-desktop-schemas
-  ];
-
-  autoPatchelfIgnoreMissingDeps = [
-    "libc.musl-x86_64.so.1"
+    (lib.getLib stdenv.cc.cc)
   ];
 
   desktopItems = [
@@ -50,43 +41,40 @@ pkgs.stdenv.mkDerivation rec {
   installPhase = ''
     runHook preInstall
 
-    mkdir -p $out/bin $out/share
-    cp -R opt/ $out/
-    cp -R usr/share/* $out/share/
+    mkdir -p $out/bin $out/opt/opencode-desktop $out/share
 
-    # Remove the deb's desktop files — use makeDesktopItem instead
+    # Extract app resources for use with system Electron
+    optDir=$(find opt -maxdepth 1 -mindepth 1 -type d)
+    cp -r "$optDir/resources" $out/opt/opencode-desktop/
+    cp -r usr/share/* $out/share/
+
+    # Remove deb's desktop files
     rm -f $out/share/applications/*.desktop
 
-    find $out/opt -type d -name "*musl*" -exec rm -rf {} + 2>/dev/null || true
-
-    APP_DIR=$(find $out/opt -maxdepth 1 -mindepth 1 -type d)
-
-    APP_BINARY=$(find "$APP_DIR" -maxdepth 1 -type f -name 'ai.opencode.desktop')
-    if [ -z "$APP_BINARY" ]; then
-      APP_BINARY=$(find "$APP_DIR" -maxdepth 1 -type f -executable ! -name '*.so' ! -name 'chrome-sandbox' ! -name 'chrome_crashpad_handler' | head -1)
-    fi
-
-    # Don't wrapProgram the binary in-place — that creates a bash script at the
-    # original path, breaking Electron's GPU/utility subprocess spawning (they
-    # re-exec /proc/self/exe and get the wrapper instead of the real ELF).
-    # Instead make a separate launcher script.
-    makeWrapper "$APP_BINARY" $out/bin/opencode-desktop \
-      --add-flags "--no-sandbox" \
-      --add-flags "--use-angle=swiftshader" \
-      --add-flags "''${NIXOS_OZONE_WL:+''${WAYLAND_DISPLAY:+--ozone-platform-hint=auto --enable-features=WaylandWindowDecorations,UseOzonePlatform}}" \
-      --prefix LD_LIBRARY_PATH : "${pkgs.libglvnd}/lib" \
-      --prefix LD_LIBRARY_PATH : "${pkgs.stdenv.cc.cc.lib}/lib" \
-      --set GSETTINGS_SCHEMAS_DIR "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}/glib-2.0/schemas"
-
-    # Rename icons to match desktop item name
+    # Copy icons (from the deb or app resources)
     for size in 32 64 128; do
-      if [ -f "$out/share/icons/hicolor/''${size}x''${size}/apps/ai.opencode.desktop.png" ]; then
-        install -Dm644 "$out/share/icons/hicolor/''${size}x''${size}/apps/ai.opencode.desktop.png" \
+      if [ -f "$optDir/resources/icons/''${size}x''${size}.png" ]; then
+        install -Dm644 "$optDir/resources/icons/''${size}x''${size}.png" \
           "$out/share/icons/hicolor/''${size}x''${size}/apps/opencode-desktop.png"
-        rm "$out/share/icons/hicolor/''${size}x''${size}/apps/ai.opencode.desktop.png"
       fi
     done
+    # Fallback: copy from share/icons if resources/icons not present
+    if [ ! -f "$out/share/icons/hicolor/32x32/apps/opencode-desktop.png" ]; then
+      for size in 32 64 128; do
+        if [ -f "$out/share/icons/hicolor/''${size}x''${size}/apps/ai.opencode.desktop.png" ]; then
+          install -Dm644 "$out/share/icons/hicolor/''${size}x''${size}/apps/ai.opencode.desktop.png" \
+            "$out/share/icons/hicolor/''${size}x''${size}/apps/opencode-desktop.png"
+          rm "$out/share/icons/hicolor/''${size}x''${size}/apps/ai.opencode.desktop.png"
+        fi
+      done
+    fi
 
+    # Use system Electron instead of the bundled one, following nixpkgs pattern
+    makeBinaryWrapper ${lib.getExe electron} $out/bin/opencode-desktop \
+      --inherit-argv0 \
+      --set ELECTRON_FORCE_IS_PACKAGED 1 \
+      --add-flags $out/opt/opencode-desktop/resources/app.asar \
+      --add-flags "\''${NIXOS_OZONE_WL:+\''${WAYLAND_DISPLAY:+--ozone-platform-hint=auto --enable-features=WaylandWindowDecorations --enable-wayland-ime=true}}"
     runHook postInstall
   '';
 }
