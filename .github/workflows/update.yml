@@ -17,16 +17,25 @@ jobs:
 
       - name: Install Nix
         uses: cachix/install-nix-action@v22
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes fetch-closure
 
       - name: Update Packages
         run: |
+          set -euo pipefail
           UPDATED=0
 
           # RootApp Update
           ROOT_OLD_HASH=$(grep -oP 'hash = "\K[^"]+' pkgs/rootapp.nix)
-          ROOT_NEW_HASH=$(nix store prefetch-file https://installer.rootapp.com/installer/Linux/X64/Root.AppImage --json | jq -r .hash)
+          ROOT_NEW_HASH=$(nix --experimental-features 'nix-command fetch-closure' store prefetch-file https://installer.rootapp.com/installer/Linux/X64/Root.AppImage --json 2>&1 | jq -r .hash)
 
-          if [ "$ROOT_OLD_HASH" != "$ROOT_NEW_HASH" ] && [ -n "$ROOT_NEW_HASH" ]; then
+          if [ -z "$ROOT_NEW_HASH" ] || [ "$ROOT_NEW_HASH" = "null" ]; then
+            echo "ERROR: Failed to fetch rootapp hash"
+            exit 1
+          fi
+
+          if [ "$ROOT_OLD_HASH" != "$ROOT_NEW_HASH" ]; then
             sed -i '/url = "https:\/\/installer.rootapp.com\/installer\/Linux\/X64\/Root.AppImage"/,/hash =/ s|hash = ".*"|hash = "'"$ROOT_NEW_HASH"'"|' pkgs/rootapp.nix
             UPDATED=1
           fi
@@ -35,9 +44,19 @@ jobs:
           OPEN_OLD_VER=$(grep -oP 'version = "\K[^"]+' pkgs/opencode-desktop.nix)
           OPEN_NEW_VER=$(curl -sL https://api.github.com/repos/anomalyco/opencode/releases/latest | jq -r .tag_name)
 
-          if [ "$OPEN_OLD_VER" != "$OPEN_NEW_VER" ] && [ "$OPEN_NEW_VER" != "null" ]; then
+          if [ -z "$OPEN_NEW_VER" ] || [ "$OPEN_NEW_VER" = "null" ]; then
+            echo "ERROR: Failed to fetch opencode version"
+            exit 1
+          fi
+
+          if [ "$OPEN_OLD_VER" != "$OPEN_NEW_VER" ]; then
             OPEN_NEW_URL="https://github.com/anomalyco/opencode/releases/download/${OPEN_NEW_VER}/opencode-desktop-linux-amd64.deb"
-            OPEN_NEW_HASH=$(nix store prefetch-file "$OPEN_NEW_URL" --json | jq -r .hash)
+            OPEN_NEW_HASH=$(nix --experimental-features 'nix-command fetch-closure' store prefetch-file "$OPEN_NEW_URL" --json 2>&1 | jq -r .hash)
+
+            if [ -z "$OPEN_NEW_HASH" ] || [ "$OPEN_NEW_HASH" = "null" ]; then
+              echo "ERROR: Failed to fetch opencode hash"
+              exit 1
+            fi
 
             sed -i 's|version = ".*"|version = "'"$OPEN_NEW_VER"'"|' pkgs/opencode-desktop.nix
             sed -i '/url = "https:\/\/github.com\/anomalyco\/opencode\/releases\/download/,/hash =/ s|hash = ".*"|hash = "'"$OPEN_NEW_HASH"'"|' pkgs/opencode-desktop.nix
