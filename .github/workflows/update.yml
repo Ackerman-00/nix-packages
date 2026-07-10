@@ -28,16 +28,19 @@ jobs:
 
           # RootApp Update
           ROOT_OLD_HASH=$(grep -oP 'hash = "\K[^"]+' pkgs/rootapp.nix)
-          ROOT_NEW_HASH=$(curl -sL https://installer.rootapp.com/installer/Linux/X64/Root.AppImage | nix --experimental-features nix-command hash file --sri --stdin)
+          ROOT_RAW=$(nix store prefetch-file --refresh https://installer.rootapp.com/installer/Linux/X64/Root.AppImage --json 2>&1)
+          ROOT_NEW_HASH=$(echo "$ROOT_RAW" | jq -r .hash)
 
-          if [ -z "$ROOT_NEW_HASH" ]; then
-            echo "ERROR: Failed to fetch rootapp hash"
+          if [ -z "$ROOT_NEW_HASH" ] || [ "$ROOT_NEW_HASH" = "null" ]; then
+            echo "ERROR: Failed to fetch rootapp hash. Raw output: $ROOT_RAW"
             exit 1
           fi
 
           if [ "$ROOT_OLD_HASH" != "$ROOT_NEW_HASH" ]; then
             sed -i '/url = "https:\/\/installer.rootapp.com\/installer\/Linux\/X64\/Root.AppImage"/,/hash =/ s|hash = ".*"|hash = "'"$ROOT_NEW_HASH"'"|' pkgs/rootapp.nix
             UPDATED=1
+          else
+            echo "RootApp: no change (hash: $ROOT_NEW_HASH)"
           fi
 
           # Opencode Desktop Update
@@ -51,10 +54,11 @@ jobs:
 
           if [ "$OPEN_OLD_VER" != "$OPEN_NEW_VER" ]; then
             OPEN_NEW_URL="https://github.com/anomalyco/opencode/releases/download/${OPEN_NEW_VER}/opencode-desktop-linux-amd64.deb"
-            OPEN_NEW_HASH=$(curl -sL "$OPEN_NEW_URL" | nix --experimental-features nix-command hash file --sri --stdin)
+            OPEN_RAW=$(nix store prefetch-file --refresh "$OPEN_NEW_URL" --json 2>&1)
+            OPEN_NEW_HASH=$(echo "$OPEN_RAW" | jq -r .hash)
 
-            if [ -z "$OPEN_NEW_HASH" ]; then
-              echo "ERROR: Failed to fetch opencode hash"
+            if [ -z "$OPEN_NEW_HASH" ] || [ "$OPEN_NEW_HASH" = "null" ]; then
+              echo "ERROR: Failed to fetch opencode hash. Raw output: $OPEN_RAW"
               exit 1
             fi
 
