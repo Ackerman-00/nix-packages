@@ -28,9 +28,9 @@ jobs:
 
           # RootApp Update
           ROOT_OLD_HASH=$(grep -oP 'hash = "\K[^"]+' pkgs/rootapp.nix)
-          ROOT_NEW_HASH=$(nix --experimental-features 'nix-command fetch-closure' store prefetch-file https://installer.rootapp.com/installer/Linux/X64/Root.AppImage --json 2>&1 | jq -r .hash)
+          ROOT_NEW_HASH=$(curl -sL https://installer.rootapp.com/installer/Linux/X64/Root.AppImage | nix --experimental-features nix-command hash file --sri --stdin)
 
-          if [ -z "$ROOT_NEW_HASH" ] || [ "$ROOT_NEW_HASH" = "null" ]; then
+          if [ -z "$ROOT_NEW_HASH" ]; then
             echo "ERROR: Failed to fetch rootapp hash"
             exit 1
           fi
@@ -51,9 +51,9 @@ jobs:
 
           if [ "$OPEN_OLD_VER" != "$OPEN_NEW_VER" ]; then
             OPEN_NEW_URL="https://github.com/anomalyco/opencode/releases/download/${OPEN_NEW_VER}/opencode-desktop-linux-amd64.deb"
-            OPEN_NEW_HASH=$(nix --experimental-features 'nix-command fetch-closure' store prefetch-file "$OPEN_NEW_URL" --json 2>&1 | jq -r .hash)
+            OPEN_NEW_HASH=$(curl -sL "$OPEN_NEW_URL" | nix --experimental-features nix-command hash file --sri --stdin)
 
-            if [ -z "$OPEN_NEW_HASH" ] || [ "$OPEN_NEW_HASH" = "null" ]; then
+            if [ -z "$OPEN_NEW_HASH" ]; then
               echo "ERROR: Failed to fetch opencode hash"
               exit 1
             fi
