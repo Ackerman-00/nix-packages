@@ -5,11 +5,11 @@ let
 in
 pkgs.stdenv.mkDerivation rec {
   pname = "opencode-desktop";
-  version = "v1.17.18";
+  version = "v1.17.20";
 
   src = pkgs.fetchurl {
     url = "https://github.com/anomalyco/opencode/releases/download/${version}/opencode-desktop-linux-amd64.deb";
-    hash = "sha256-wwHZgER2W2rW2/ZQpsHT23PulRyBcfxrtA3qp7mkWoM=";
+    hash = "sha256-6cS9+INmwemq4JKTPOyTiGDh1Q3LNjK5un4oq5DDlBo=";
   };
 
   nativeBuildInputs = with pkgs; [
