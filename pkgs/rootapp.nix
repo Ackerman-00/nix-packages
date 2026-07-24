@@ -5,7 +5,7 @@ let
   version = "latest";
   src = pkgs.fetchurl {
     url = "https://installer.rootapp.com/installer/Linux/X64/Root.AppImage";
-    hash = "sha256-1Q0B7al4dsy5ZUcMmClHtWrGSfpJeCVEnv5JUrBtJSY=";
+    hash = "sha256-PKsaD7MoNHjA58FFMOBh/yj3oojfljvFgLzAadGR5Zs=";
   };
   appimageContents = pkgs.appimageTools.extractType2 { inherit pname version src; };
 in pkgs.appimageTools.wrapType2 {
