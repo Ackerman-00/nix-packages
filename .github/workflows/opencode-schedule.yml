@@ -105,11 +105,18 @@ jobs:
               pkgs/*.nix, and commits to main directly ("chore: auto-update
               packages"). It does NOT touch flake.lock.
             - BUILD VERIFICATION IS NIX, AND NIX IS PREINSTALLED in this job
-              (cachix/install-nix-action, experimental features enabled). The
-              build environment IS the user's environment: `nix build .#<pkg>`
-              builds in a sandbox and runs installCheckPhase where present
-              (helium runs `$out/bin/helium --version`). There is no external
-              build farm - a green local `nix build` IS the shipped artifact.
+              (cachix/install-nix-action, experimental features enabled).
+              `nix build .#<pkg>` builds in a sandbox and runs installCheckPhase
+              where present (helium runs `$out/bin/helium --version`). There is
+              no external build farm - a green local `nix build` IS the shipped
+              artifact. BUT a green build only proves it COMPILES with the full
+              nix closure available - it does NOT prove the binary RUNS on a
+              real user machine. Runtime verification happens in a CLEAN
+              container (see RUNTIME-VERIFICATION SWEEP below): run the built
+              store binary inside a fresh base-distro container with only the
+              nix store mounted - the runner's own environment can mask missing
+              runtime deps; the container cannot. Docker is preinstalled on the
+              runner.
             - CRITICAL NIX FACT - GIT TRACKING: for a flake living in a git repo,
               Nix evaluates the dirty working tree but ONLY includes files that
               git knows about. Untracked files are INVISIBLE to nix build / nix
@@ -220,7 +227,11 @@ jobs:
                  run's results. The nix store is cached on the runner, so use
                  `--refresh` on prefetch/fetch and rebuild the package fully
                  (`nix build .#<pkg> --no-link --refresh` if needed) - never
-                 let a stale store path stand in for a fresh build.
+                 let a stale store path stand in for a fresh build. Runtime
+                 tests ALWAYS run in a FRESH container (`docker run --rm`, a
+                 new container per test) - never reuse a container, store
+                 state, or environment from a failed attempt; the "fixed"
+                 package must run in the same clean state a user would be in.
               d. FRESH-CHECKER PASS. After you finish fixing and testing
                  everything you touched, re-run the verification ONE more time
                  from scratch (fresh working tree, git clean) as an independent
@@ -246,7 +257,8 @@ jobs:
             should ship the moment it is verified:
               a. ONE PACKAGE PER CYCLE. Pick the single most important broken
                  package, fix it, and complete its FULL verification (nix
-                 build + flake check) before touching the next.
+                 build + flake check + clean-container runtime test) before
+                 touching the next.
               b. PUSH THE MOMENT IT VERIFIES. As soon as that one package
                  passes, stage ONLY that package's files, `git fetch origin &&
                  git pull --rebase origin main`, commit one atomic commit for
@@ -424,20 +436,97 @@ jobs:
               c. BINARY SMOKE TEST: for each package, the built binary must at
                  least print its version: `./result/bin/helium --version` (runs
                  in installCheckPhase too). rootapp / opencode-desktop are GUI
-                 apps - they cannot launch headless on the runner (no display;
-                 user-ns restrictions may block Electron sandboxes). Verify
-                 install + ldd completeness instead: `ldd result/bin/* | grep
-                 "not found"` must return nothing, `result/bin/rootapp
-                 --version` style flags if supported. GUI launch on a real
-                 desktop is NOT verifiable here - a named gap.
+                 apps - they cannot launch their full GUI on the runner (no
+                 display), but they still get the full container runtime test
+                 from RUNTIME-VERIFICATION SWEEP below: ldd 100% resolved in a
+                 CLEAN container (zero "not found"), interpreter check, and
+                 every headless flag the binary supports (--version/--help/
+                 --dump-version). GUI launch itself needs a display - that
+                 exact part stays a named gap, but everything else is verified
+                 in the container, not skipped.
               d. SCOPE: this run MUST build-verify every package you touched or
                  rebuilt, and at minimum re-verify all 3 packages once.
               e. MANDATORY DELIVERABLE - build/install table in your final
                  summary, one row per package:
                  | package | build (x86_64) | aarch64 eval | binary smoke | status |
                  status in: pass / fixed / broken-(reason) / blocked-(reason).
-                 Any package you changed but did not build-verify is an
-                 unfinished package.
+                  Any package you changed but did not build-verify is an
+                  unfinished package.
+
+            RUNTIME-VERIFICATION SWEEP (MANDATORY - "run the REAL binary in a
+            CLEAN container, not just nix build"). A green `nix build` only
+            proves the package COMPILES inside a sandbox where the full nix
+            closure is available - it does NOT prove the binary RUNS on a real
+            user machine. Missing runtime libs (a lib the binary links that is
+            NOT in the package's runtimeDeps/buildInputs), a wrong interpreter,
+            or a broken wrapper only surface at runtime, on the user's machine.
+            Catch this BEFORE users do.
+              SCOPE & COVERAGE LEDGER: the goal is 100% coverage of every
+              package the flake ships. Keep a per-package runtime-test ledger
+              in .opencode-relay.md (package | last runtime-tested | result |
+              smoke result). This run MUST container-test: (1) every package
+              you touched or rebuilt, (2) every package whose binary changed
+              since its last successful test (the store path changed), and (3)
+              as many still-uncovered packages as your time budget allows,
+              oldest-first. NEVER mark a package's test as done based on a
+              previous run's result if the binary changed since then.
+              a. GET THE BUILT OUTPUT: `nix build .#<pkg> --no-link` then
+                 `OUT=$(nix path-info .#<pkg>)`. The store path IS the artifact
+                 users get - test exactly that.
+              b. REAL RUNTIME TEST IN A CLEAN CONTAINER. You need a working
+                 container runtime on the runner. Docker is preinstalled on
+                 ubuntu-latest, but VERIFY it first: `docker version` (and
+                 `docker run --rm hello-world` once to confirm the daemon
+                 works; on GitHub runners no sudo is needed). If docker is
+                 missing, broken, or the daemon is down, INSTALL it yourself:
+                 sudo apt-get update && sudo apt-get install -y docker.io
+                 sudo systemctl start docker
+                 (or `sudo apt-get install -y podman` and use `podman run`
+                 with the same arguments). Never skip the container test
+                 because the runtime is missing - install it. Then spin up a
+                 FRESH container from a bare base-distro image (ubuntu:24.04
+                 or debian:bookworm - a user machine with NOTHING
+                 preinstalled), mount the nix store read-only, and run the
+                 built binary:
+                 OUT=$(nix path-info .#<pkg>)
+                 docker run --rm -v /nix/store:/nix/store:ro ubuntu:24.04 \
+                   bash -lc '
+                     ldd "$OUT/bin/<bin>" | grep "not found"   # MUST print nothing
+                     "$OUT/bin/<bin>" --version                # exit 0 = smoke passed
+                   '
+                 The base image has no nix closure and no buildInputs - the
+                 ONLY libraries available are the ones the package's own
+                 closure provides. Any lib the binary needs that is NOT in its
+                 runtimeDeps/buildInputs appears as "not found" here, exactly
+                 as it would on the user's machine. The runner's own
+                 environment can mask missing deps; the container cannot.
+                 If the container runtime cannot be made to work, fall back to:
+                 nix-shell -p lddtree --run "lddtree '$OUT'/bin/<bin>"
+                 (lists every lib with its status) and run the binary with
+                 `strace -f -e trace=openat,execve` to catch missing files.
+              c. INTERPRETER + ELF SANITY: `patchelf --print-interpreter
+                 '$OUT'/bin/<bin>` must point at the nix dynamic linker
+                 (/nix/store/.../ld-linux-x86-64.so.2), and `readelf -d
+                 '$OUT'/bin/<bin> | grep NEEDED` entries must ALL resolve in
+                 the container (no "not found"). A binary whose interpreter is
+                 /lib64/ld-linux-x86-64.so.2 is broken for NixOS users - fix
+                 the patchelf in pkgs/*.nix.
+              d. FIX, REBUILD, RETEST. A missing lib = add it to the
+                 package's runtimeDeps/buildInputs (verify it exists in
+                 nixpkgs first: `nix eval nixpkgs#<attr>`), then `nix build
+                 .#<pkg> --no-link` and re-run the container test until ldd
+                 shows ZERO "not found" AND the binary runs (exit 0 = smoke
+                 passed). GUI-only apps: run every headless flag they support
+                 (--version, --help, --dump-version); full GUI launch needs a
+                 display and stays a named gap with the reason recorded - but
+                 the binary must at minimum start far enough to print
+                 version/help inside the container.
+              e. MANDATORY DELIVERABLE - runtime-test table in your final
+                 summary, one row per package tested:
+                 | package | nix build | container ldd | container smoke | status |
+                 status in: verified / fixed / broken-(lib) /
+                 blocked-(reason). Any package you changed but did not
+                 container-test is an unfinished package.
 
             Then work autonomously, in this priority order:
 
@@ -676,10 +765,12 @@ jobs:
             evidence):
               1. `git status --porcelain` is EMPTY and the working tree is
                  clean.
-              2. Every package you touched this run has a passing `nix build
-                 .#<pkg>` on the final state of main, including the fresh-
-                 checker re-run (fresh checkout, full rebuild with --refresh),
-                 with before/after evidence recorded.
+               2. Every package you touched this run has a passing `nix build
+                  .#<pkg>` AND a passing clean-container runtime test (ldd
+                  zero "not found" + headless smoke) on the final state of
+                  main, including the fresh-checker re-run (fresh checkout,
+                  full rebuild with --refresh, fresh container), with
+                  before/after evidence recorded.
               3. `nix flake check --all-systems` passes on the final state of
                  main (both systems evaluate; aarch64 BUILD is impossible on
                  this runner - named gap, but eval must be green).
