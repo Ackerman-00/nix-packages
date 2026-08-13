@@ -1,7 +1,3 @@
-# Ackerman's NixOS Packages
-
-Zero-maintenance NixOS flake for **RootApp**, **OpenCode Desktop**, **Helium** and **ProtonPlus**.
-
 ## Packages
 
 * `rootapp` — Root Field Service Management (AppImage)
