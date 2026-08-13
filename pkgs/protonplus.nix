@@ -36,10 +36,11 @@ in pkgs.stdenv.mkDerivation {
       $out/share/icons/hicolor/256x256/apps
 
     # sharun-based AppImage; the bun-compiled binary resolves ../shared,
-    # ../lib and ../etc relative to itself, so install the full bundle
+    # ../lib, ../share and ../etc relative to itself, so install the full bundle
     cp -r squashfs-root/bin $out/
     cp -r squashfs-root/shared $out/
     cp -r squashfs-root/lib $out/
+    cp -r squashfs-root/share $out/
     cp -r squashfs-root/etc $out/
     install -m 644 squashfs-root/com.vysp3r.ProtonPlus.desktop \
       $out/share/applications/
