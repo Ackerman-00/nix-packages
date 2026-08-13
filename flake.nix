@@ -13,7 +13,13 @@
     in {
       packages = forAllSystems (system:
         let
-          pkgs = nixpkgs.legacyPackages.${system};
+          # rootapp is inherently unfree (proprietary); importing nixpkgs
+          # with allowUnfree lets this flake ship it without forcing every
+          # consumer to set nixpkgs.config.allowUnfree themselves.
+          pkgs = import nixpkgs {
+            inherit system;
+            config = { allowUnfree = true; };
+          };
           helium = pkgs.callPackage ./pkgs/helium.nix { inherit lib; };
           protonplus = pkgs.callPackage ./pkgs/protonplus.nix { inherit lib; };
         in {
