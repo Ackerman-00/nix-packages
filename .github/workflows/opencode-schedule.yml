@@ -141,17 +141,40 @@ jobs:
               fail. All other pushes (pkgs/*.nix, flake.nix, README, relay, etc.)
               work normally - always `git fetch origin && git pull --rebase
               origin main` before pushing.
-            - GIT IDENTITY (MANDATORY): git author identity is ALREADY configured
-              in this environment as `opencode-agent[bot]
-              <41898282+opencode-agent[bot]@users.noreply.github.com>` (both via
-              git config and GIT_AUTHOR_*/GIT_COMMITTER_* env vars). Before
-              creating ANY commit, reuse the existing identity as-is. NEVER run
-              `git config user.name` / `git config user.email`, NEVER invent or
-              guess noreply email addresses (e.g. opencode@users.noreply.github.com
-              maps to a real human's GitHub account and will misattribute your
-              commits as that person), and NEVER set a commit author that is not
-              `opencode-agent[bot]`. Verify with `git config --get user.name` /
-              `git config --get user.email` if unsure.
+            - GIT IDENTITY (MANDATORY - "ONLY opencode-agent[bot], NOTHING ELSE").
+              The ONLY allowed commit identity in this repo is exactly
+              `opencode-agent[bot] <41898282+opencode-agent[bot]@users.noreply.github.com>`,
+              already configured via git config AND the GIT_AUTHOR_*/GIT_COMMITTER_*
+              env vars. Every other name or email is FORBIDDEN, including:
+                - the display name "OpenCode", "opencode", "Opencode Bot",
+                  "opencode-bot", "opencode-autonomous", or ANY name containing
+                  "opencode" that is not exactly "opencode-agent[bot]";
+                - the emails noreply@opencode.ai, opencode-agent[bot]@users.noreply.github.com,
+                  opencode@locals, or any invented *@users.noreply.github.com address.
+              WHY (REAL INCIDENT - DO NOT REPEAT): an opencode run once committed with
+              the name "OpenCode" and an invented noreply email; GitHub attributed
+              those commits to a REAL HUMAN's account ("OpenCode Apruzzese Francesco",
+              a GitHub user who had registered that email), so a stranger's name
+              appeared as the author of this repo's commits. The opencode default
+              `Co-Authored-By: opencode <noreply@opencode.ai>` trailer causes the same
+              misattribution (that email maps to a real human account).
+              MANDATORY RULES:
+              1. NEVER run `git config user.name` / `git config user.email`.
+              2. NEVER pass --author/--committer, and NEVER add ANY trailer
+                 (Co-Authored-By / Signed-off-by) to a commit message.
+              3. NEVER invent or guess any email address. Only the exact email above.
+              4. Before EVERY commit, verify: `git config --get user.name` and
+                 `git config --get user.email` both return the allowed identity.
+              5. After EVERY commit, verify the result:
+                 `git log -1 --format='%an <%ae>'` MUST print exactly
+                 `opencode-agent[bot] <41898282+opencode-agent[bot]@users.noreply.github.com>`
+                 and `git show -s --format=%B HEAD | grep -ci co-authored` must print 0.
+              6. If either check fails, fix IMMEDIATELY:
+                 `git commit --amend --reset-author --no-edit` (the env vars reset the
+                 author automatically - do NOT pass --author), re-run check 5, then
+                 `git fetch origin && git pull --rebase origin main` and push with
+                 `git push --force-with-lease origin main`. NEVER leave a commit on
+                 main that is not authored by the allowed identity.
 
             First, read this repository thoroughly: study flake.nix, every
             pkgs/*.nix (version/url/hash/structure), and update.yml before
