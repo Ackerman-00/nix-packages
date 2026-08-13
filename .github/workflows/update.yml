@@ -99,11 +99,43 @@ jobs:
             echo "Helium: no change (version: $HE_NEW_VER)"
           fi
 
+          # ProtonPlus Update
+          PP_OLD_VER=$(grep -oP 'version = "\K[^"]+' pkgs/protonplus.nix)
+          PP_NEW_VER=$(curl -sL https://api.github.com/repos/Vysp3r/ProtonPlus/releases/latest | jq -r .tag_name | sed 's/^v//')
+
+          if [ -z "$PP_NEW_VER" ] || [ "$PP_NEW_VER" = "null" ]; then
+            echo "ERROR: Failed to fetch protonplus version"
+            exit 1
+          fi
+
+          if [ "$PP_OLD_VER" != "$PP_NEW_VER" ]; then
+            PP_X64_RAW=$(nix store prefetch-file --refresh "https://github.com/Vysp3r/ProtonPlus/releases/download/v${PP_NEW_VER}/ProtonPlus-${PP_NEW_VER}-anylinux-x86_64.AppImage" --json 2>&1)
+            PP_X64_HASH=$(echo "$PP_X64_RAW" | jq -r .hash)
+            PP_ARM_RAW=$(nix store prefetch-file --refresh "https://github.com/Vysp3r/ProtonPlus/releases/download/v${PP_NEW_VER}/ProtonPlus-${PP_NEW_VER}-anylinux-aarch64.AppImage" --json 2>&1)
+            PP_ARM_HASH=$(echo "$PP_ARM_RAW" | jq -r .hash)
+
+            if [ -z "$PP_X64_HASH" ] || [ "$PP_X64_HASH" = "null" ]; then
+              echo "ERROR: Failed to fetch protonplus x86_64 hash. Raw output: $PP_X64_RAW"
+              exit 1
+            fi
+            if [ -z "$PP_ARM_HASH" ] || [ "$PP_ARM_HASH" = "null" ]; then
+              echo "ERROR: Failed to fetch protonplus arm64 hash. Raw output: $PP_ARM_RAW"
+              exit 1
+            fi
+
+            sed -i 's|version = ".*"|version = "'"$PP_NEW_VER"'"|' pkgs/protonplus.nix
+            sed -i '/anylinux-x86_64.AppImage";/,/hash =/ s|hash = "[^"]*"|hash = "'"$PP_X64_HASH"'"|' pkgs/protonplus.nix
+            sed -i '/anylinux-aarch64.AppImage";/,/hash =/ s|hash = "[^"]*"|hash = "'"$PP_ARM_HASH"'"|' pkgs/protonplus.nix
+            UPDATED=1
+          else
+            echo "ProtonPlus: no change (version: $PP_NEW_VER)"
+          fi
+
           # Commit
           if [ "$UPDATED" -eq 1 ]; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add pkgs/rootapp.nix pkgs/opencode-desktop.nix pkgs/helium.nix
+            git add pkgs/rootapp.nix pkgs/opencode-desktop.nix pkgs/helium.nix pkgs/protonplus.nix
             git commit -m "chore: auto-update packages"
             git push
           fi

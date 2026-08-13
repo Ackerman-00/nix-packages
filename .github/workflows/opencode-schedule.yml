@@ -94,20 +94,30 @@ jobs:
             Act like an experienced open-source maintainer.
 
             CONTEXT
-            - This is a Nix flake (flake.nix) with packages defined in pkgs/
-              (pkgs/rootapp.nix, pkgs/opencode-desktop.nix, pkgs/helium.nix).
-              Supported systems: x86_64-linux and aarch64-linux. helium builds on
-              both; rootapp and opencode-desktop are x86_64-linux only.
+            - This is a Nix flake (flake.nix) with packages defined in pkgs/.
+              NEVER assume the package inventory: at the start of every run,
+              READ flake.nix and pkgs/*.nix to discover the packages yourself
+              (what is in the repo right now is the only truth; new packages
+              are added over time). Every package you build, audit, version-
+              check, and container-test must come from that discovery, not
+              from a memorized list. The number of packages changes - never
+              hardcode "3 packages", "4 packages", or any name list in your
+              plan.
+              Supported systems: x86_64-linux and aarch64-linux (per-package
+              support is declared in each pkgs/*.nix / flake.nix - read it).
             - update.yml (GitHub Actions, "Packages Auto-Update") runs daily at
-              00:00 UTC: it checks upstream (rootapp AppImage hash via `nix store
-              prefetch-file`, opencode-desktop version+hash from GitHub releases,
-              helium version + x86_64/arm64 hashes from GitHub releases), bumps
-              pkgs/*.nix, and commits to main directly ("chore: auto-update
-              packages"). It does NOT touch flake.lock.
+              00:00 UTC: it checks every package's upstream (fixed-URL
+              artifacts via `nix store prefetch-file` hash comparison,
+              GitHub-release artifacts via the releases API) and bumps
+              pkgs/*.nix for whichever changed, then commits to main directly
+              ("chore: auto-update packages"). It does NOT touch flake.lock.
+              Read it to see exactly which URL each package is checked
+              against - keep it in sync with pkgs/*.nix whenever a source
+              changes (a new package = a new block in update.yml).
             - BUILD VERIFICATION IS NIX, AND NIX IS PREINSTALLED in this job
               (cachix/install-nix-action, experimental features enabled).
               `nix build .#<pkg>` builds in a sandbox and runs installCheckPhase
-              where present (helium runs `$out/bin/helium --version`). There is
+              where present (packages with one print their version). There is
               no external build farm - a green local `nix build` IS the shipped
               artifact. BUT a green build only proves it COMPILES with the full
               nix closure available - it does NOT prove the binary RUNS on a
@@ -182,6 +192,67 @@ jobs:
                  `git fetch origin && git pull --rebase origin main` and push with
                  `git push --force-with-lease origin main`. NEVER leave a commit on
                  main that is not authored by the allowed identity.
+
+            BINARY-FIRST PACKAGING PATTERN (MANDATORY - THE ONLY WAY THIS REPO
+            PACKAGES SOFTWARE). This repository NEVER builds software from
+            source. It repackages OFFICIAL PREBUILT RELEASE ARTIFACTS exactly
+            like Void Linux -bin packages (e.g. void-nexus
+            srcpkgs/heroic-games-launcher: distfiles points at the upstream
+            GitHub release tar.xz and do_install just copies the prebuilt
+            tree - no compilation). NixOS nixpkgs-unstable trails upstream
+            releases by weeks, so this flake exists to ship the LATEST
+            official binary to users faster than nixpkgs does.
+              a. EVERY package's src MUST be the upstream's own release
+                 artifact: a GitHub release asset (tar.xz, tar.gz, deb, rpm,
+                 AppImage), or the official installer URL. NEVER download
+                 source tarballs, NEVER compile, NEVER use nixpkgs' build-from-
+                 source derivation of the same app as the base.
+              b. HOW TO REPACKAGE EACH ARTIFACT TYPE (check what upstream
+                 ships FIRST - prefer the artifact that needs the least
+                 surgery, in this order):
+                 1. tar.xz/tar.gz of a prebuilt tree: copy the tree into $out
+                    (bin/lib/share), `patchelf --set-interpreter` every ELF
+                    that hardcodes /lib64/ld-linux-x86-64.so.2, add missing
+                    runtime libs to runtimeDeps/buildInputs, write a .desktop
+                    if missing.
+                 2. .deb: `dpkg-deb -x` (or `ar x` + tar) and install the
+                    usr/ tree + any opt/ dir the binary needs.
+                 3. Type-2 AppImage (classic squashfs): extract with
+                    `unsquashfs -o <offset>` in the build (or
+                    pkgs.appimageTools.extract / appimageTools.wrapType2 for
+                    FHS wrapping), install the AppDir contents.
+                 4. sharun-based AppImage (modern, no squashfs superblock):
+                    appimageTools.extractType2 FAILS on it (that is why
+                    pkgs/protonplus.nix self-extracts with
+                    `./<app>.AppImage --appimage-extract` in buildPhase).
+                    Install the resulting squashfs-root tree VERBATIM -
+                    keep bin/shared/lib/etc together, the main binary
+                    resolves those sibling dirs relative to itself.
+                 Keep the existing per-package method unless upstream changes
+                 the artifact type.
+              c. NEW PACKAGES (when a user or issue asks for a new app):
+                 discover the upstream project via web search, find its
+                 official latest release, pick the best prebuilt artifact by
+                 b., write pkgs/<name>.nix following the pattern of an
+                 existing package in this repo, wire it into flake.nix (all
+                 systems it supports), update README.md, add an auto-update
+                 block to update.yml - then run the FULL verification chain
+                 (build + flake check + container runtime test) and push.
+                 Never say "I can't package it" - this is a routine task.
+              d. NEVER replace a working binary-first package with a
+                 source build, and never switch a sharun AppImage back to
+                 appimageTools.wrapType2/extractType2 (they cannot extract
+                 it). If upstream changes artifact type, adapt the package to
+                 the new artifact and re-verify.
+              e. PROVE IT IS BINARY (MANDATORY): every package's meta MUST
+                 declare `sourceProvenance = with lib.sourceTypes;
+                 [ binaryNativeCode ];` - the official nixpkgs machine-
+                 readable declaration that this is a repackaged prebuilt
+                 binary, not a source build. Verify it for every package:
+                 `nix eval .#<pkg>.meta.sourceProvenance` must output
+                 binaryNativeCode. A package without it (or whose src is a
+                 source tarball, or whose derivation would invoke a compiler)
+                 is a BUG - fix it.
 
             First, read this repository thoroughly: study flake.nix, every
             pkgs/*.nix (version/url/hash/structure), and update.yml before
@@ -293,10 +364,12 @@ jobs:
                  If a previous commit already carries the SAME version/hash you
                  are about to push, STOP: do not bump, do not push. The package
                  is already current.
-              b. CHECK WHAT IS ACTUALLY UPSTREAM. For opencode-desktop/helium:
-                 `gh api repos/<owner>/<repo>/releases/latest --jq .tag_name`.
-                 For rootapp: re-prefetch the AppImage URL and compare hashes.
-                 Only if upstream differs from the repo do you bump.
+              b. CHECK WHAT IS ACTUALLY UPSTREAM. Read the source URL(s) from
+                 the pkgs/<pkg>.nix file itself: for GitHub-release sources use
+                 `gh api repos/<owner>/<repo>/releases/latest --jq .tag_name`
+                 (owner/repo parsed from the pinned URL); for fixed installer
+                 URLs (no releases/tags) re-prefetch the URL and compare
+                 hashes. Only if upstream differs from the repo do you bump.
               c. NEVER add gratuitous "sync" commits for versions already in git
                  log. A version/hash change is only justified by an actual
                  upstream change you verified.
@@ -337,32 +410,19 @@ jobs:
             Chain-of-verification protocol: draft a dependency list from the
             package file, independently derive the TRUE list from upstream,
             then reconcile - never trust either alone.
-              a. OPEN THE PACKAGE. Read the FULL pkgs/*.nix (every
+                 a. OPEN THE PACKAGE. Read the FULL pkgs/*.nix (every
                  buildInputs/nativeBuildInputs entry, runtimeDeps, patchelf
                  calls, wrapper args, installPhase), and download + EXTRACT the
-                 source artifact into /tmp (NEVER into the repo working tree):
-                 - rootapp: AppImage - extract with unsquashfs using the ELF
-                   section-header offset (pkgs.appimageTools.extractType2 does
-                   this in the build; for auditing use `unsquashfs -o <offset>`
-                   with the offset from `readelf -h` or `ll-sa`), then read the
-                   real version from inside (X-AppImage-Version in the .desktop,
-                   bundled package.json/app.asar) and check which shared libs
-                   the AppImage bundles vs. needs from the system.
-                 - opencode-desktop: .deb - `ar x <file>.deb && tar -xf
-                   data.tar.*` (or `dpkg -x`), inspect the Electron app
-                   (resources/app.asar, package.json) - it runs on the SYSTEM
-                   electron (nixpkgs electron_42), so check which system libs
-                   the packaged binary needs via `ldd`.
-                 - helium: tar.xz - plain extraction; it is a Chromium browser
-                   with prebuilt ELFs (helium, helium_crashpad_handler,
-                   chromedriver) that ship with NO rpath and need
-                   /lib64/ld-linux-x86-64.so.2 (patched to the nix interpreter).
-                   Check `readelf -d <elf> | grep NEEDED` and reconcile the
-                   sonames against the package's runtimeDeps list (nss, nspr,
-                   glib, gtk3, atk, at-spi2, dbus, cups, expat, xcb, xkbcommon,
-                   alsa, gbm, X11 libs, cairo, pango, udev, qt5/qt6 shims,
-                   etc.). The qt5/qt6 shim libs link against
-                   libQt5/Qt6Core/Gui/Widgets - verify they resolve.
+                 source artifact into /tmp (NEVER into the repo working tree).
+                 HOW to extract depends on the artifact type pinned in the
+                 file (see BINARY-FIRST PACKAGING PATTERN b.): AppImage ->
+                 unsquashfs -o <offset> / --appimage-extract for sharun ones;
+                 .deb -> `ar x` + tar / dpkg-deb -x; tar.xz -> plain tar; rpm
+                 -> rpm2cpio + cpio -idmv. Then read the REAL version from
+                 inside the artifact (X-AppImage-Version in the .desktop,
+                 bundled package.json/app.asar, --version output) and check
+                 which shared libs the artifact bundles vs. needs from the
+                 system.
               b. DERIVE THE TRUE RUNTIME DEPENDENCY LIST from those files. Every
                  directly-linked shared library MUST have a matching entry in
                  the package's runtimeDeps / buildInputs (or be bundled inside
@@ -424,28 +484,31 @@ jobs:
 
             BUILD-VERIFICATION SWEEP (MANDATORY - `nix build` MUST pass for the
             flake as users would consume it). A green eval is NOT a green build:
-              a. PER-PACKAGE BUILD: `nix build .#rootapp .#opencode-desktop
-                 .#helium` (build all three; `--no-link` keeps the store clean).
-                 Each must succeed, including installCheckPhase (helium prints
-                 its version).
+              a. PER-PACKAGE BUILD: discover the inventory from flake.nix
+                 (`nix eval --json .#packages.x86_64-linux --apply builtins.attrNames`
+                 or read flake.nix directly), then build EVERY package:
+                 `nix build .#<pkg1> .#<pkg2> ...` (build all discovered;
+                 `--no-link` keeps the store clean).
+                 Each must succeed, including installCheckPhase
+                 (packages that have one print their version).
               b. FLAKE-LEVEL CHECK: `nix flake check --all-systems` - this
                  evaluates the flake for BOTH systems and runs checks; it also
                  validates that aarch64 packages evaluate (they cannot be BUILT
                  on this x86_64 runner - that is an accepted, named gap; note
                  it in the ledger).
               c. BINARY SMOKE TEST: for each package, the built binary must at
-                 least print its version: `./result/bin/helium --version` (runs
-                 in installCheckPhase too). rootapp / opencode-desktop are GUI
-                 apps - they cannot launch their full GUI on the runner (no
-                 display), but they still get the full container runtime test
-                 from RUNTIME-VERIFICATION SWEEP below: ldd 100% resolved in a
-                 CLEAN container (zero "not found"), interpreter check, and
-                 every headless flag the binary supports (--version/--help/
-                 --dump-version). GUI launch itself needs a display - that
-                 exact part stays a named gap, but everything else is verified
-                 in the container, not skipped.
+                 least print its version: `./result/bin/<bin> --version` (runs
+                 in installCheckPhase too). GUI apps cannot launch their full
+                 GUI on the runner (no display), but they still get the full
+                 container runtime test from RUNTIME-VERIFICATION SWEEP below:
+                 ldd 100% resolved in a CLEAN container (zero "not found"),
+                 interpreter check, and every headless flag the binary
+                 supports (--version/--help/--dump-version). GUI launch itself
+                 needs a display - that exact part stays a named gap, but
+                 everything else is verified in the container, not skipped.
               d. SCOPE: this run MUST build-verify every package you touched or
-                 rebuilt, and at minimum re-verify all 3 packages once.
+                 rebuilt, and at minimum re-verify the FULL discovered
+                 inventory once (all packages in flake.nix).
               e. MANDATORY DELIVERABLE - build/install table in your final
                  summary, one row per package:
                  | package | build (x86_64) | aarch64 eval | binary smoke | status |
@@ -555,38 +618,41 @@ jobs:
                seen it build green locally.
 
             2. VERIFY VERSION ACCURACY OF EVERY PACKAGE - FULL INVENTORY SWEEP.
-               This step is MANDATORY and must cover 100% of packages in this
-               repo (rootapp, opencode-desktop, helium), one by one. Do NOT
-               trust the current pkgs/*.nix, do NOT assume "nothing changed
-               since last time".
-               STEP A - BUILD THE COMPLETE PACKAGE INVENTORY: list every
-               package attr in flake.nix; that list is your master checklist.
-               Read README.md's package list and flag ANY discrepancy (a
-               package in README but not in flake.nix, or vice versa) - both
-               are bugs to fix.
-               STEP B - FOR EACH PACKAGE, FIND THE AUTHORITATIVE LATEST
-               UPSTREAM VERSION. NEVER trust memory or the file's current
-               version:
-               - rootapp: the version lives INSIDE the AppImage
-                 (https://installer.rootapp.com/installer/Linux/X64/Root.AppImage,
-                 no releases/tags). Re-prefetch the URL
-                 (`nix store prefetch-file --refresh <url> --json | jq -r .hash`)
-                 and compare the hash with pkgs/rootapp.nix; if it differs,
-                 the AppImage changed - update the hash. To report the true
-                 version, download and tear the AppImage (X-AppImage-Version in
-                 the .desktop). Cross-check with the AUR package
-                 (aur.archlinux.org/packages/rootapp-bin) and the official
-                 changelog. Do NOT trust "19.2.5" (a bogus binary string) -
-                 the version must come from inside the AppImage.
-               - opencode-desktop: `gh api repos/anomalyco/opencode/releases/
-                 latest --jq .tag_name` (tag format vX.Y.Z, e.g. v1.18.18).
-                 If it differs from pkgs/opencode-desktop.nix version, update
-                 version + hash (asset:
-                 opencode-desktop-linux-amd64.deb from the release).
-               - helium: `gh api repos/imputnet/helium-linux/releases/latest
-                 --jq .tag_name`. If it differs, update version + BOTH hashes
-                 (helium-<ver>-x86_64_linux.tar.xz and
-                 helium-<ver>-arm64_linux.tar.xz) via nix store prefetch-file.
+                This step is MANDATORY and must cover 100% of packages in this
+                repo, one by one. Do NOT trust the current pkgs/*.nix, do NOT
+                assume "nothing changed since last time".
+                STEP A - BUILD THE COMPLETE PACKAGE INVENTORY: list every
+                package attr in flake.nix (or `nix eval --json
+                .#packages.x86_64-linux --apply builtins.attrNames`); that list
+                is your master checklist. Read README.md's package list and
+                flag ANY discrepancy (a package in README but not in flake.nix,
+                or vice versa) - both are bugs to fix.
+                STEP B - FOR EACH PACKAGE, FIND THE AUTHORITATIVE LATEST
+                UPSTREAM VERSION. NEVER trust memory or the file's current
+                version. READ the package's source URL(s) from its pkgs/*.nix
+                (that IS where upstream is declared - never assume), then:
+                - If the source is a GitHub release asset, query the project:
+                  `gh api repos/<owner>/<repo>/releases/latest --jq .tag_name`
+                  (owner/repo parsed from the URL; strip any leading v from
+                  tags to match how the package pins version). If it differs
+                  from the pinned version, update version + hash(es) for the
+                  exact asset name(s) pinned in the file, via `nix store
+                  prefetch-file --refresh <asset-url> --json | jq -r .hash`.
+                - If the source is a FIXED installer URL (no releases/tags,
+                  e.g. a "latest" AppImage endpoint), re-prefetch the URL and
+                  compare the hash with the pinned one: a different hash means
+                  upstream changed - update the hash. To report the true
+                  version, download and tear the artifact (X-AppImage-Version
+                  in the .desktop, package.json inside, --version output).
+                  Cross-check with the AUR package and the official changelog
+                  (AUR names usually end in -bin for binary-first packages).
+                - Multi-arch packages pin one hash per arch asset - keep ALL
+                  of them in sync with the release (x86_64 + aarch64).
+                - aarch64 reality check: an aarch64 artifact that needs to RUN
+                  during packaging (e.g. a self-extracting sharun AppImage)
+                  cannot be built on this x86_64 runner - aarch64 is eval-only
+                  there, an accepted named gap. But aarch64 hashes must still
+                  be prefetched and updated.
                STEP C - DETECT WRONG VERSIONS, NOT JUST STALE ONES. A version
                is WRONG if it matches no real upstream release, is NEWER than
                the actual latest, or the hash does not match the artifact at
@@ -774,9 +840,9 @@ jobs:
               3. `nix flake check --all-systems` passes on the final state of
                  main (both systems evaluate; aarch64 BUILD is impossible on
                  this runner - named gap, but eval must be green).
-              4. The version sweep table covers 100% of the inventory
-                 (rootapp, opencode-desktop, helium), with the current
-                 upstream version verified online for each.
+              4. The version sweep table covers 100% of the discovered
+                  inventory (every package attr in flake.nix), with the current
+                  upstream version verified online for each.
               5. The dependency audit table covers 100% of the inventory,
                  including re-derivation for every package whose upstream
                  changed.

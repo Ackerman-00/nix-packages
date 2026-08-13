@@ -83,4 +83,13 @@ pkgs.stdenv.mkDerivation rec {
       --add-flags "\''${NIXOS_OZONE_WL:+\''${WAYLAND_DISPLAY:+--ozone-platform-hint=auto --enable-features=WaylandWindowDecorations --enable-wayland-ime=true}}"
     runHook postInstall
   '';
+
+  meta = {
+    homepage = "https://opencode.ai";
+    description = "AI coding agent desktop client";
+    license = lib.licenses.mit;
+    platforms = [ "x86_64-linux" ];
+    mainProgram = "opencode-desktop";
+    sourceProvenance = with lib.sourceTypes; [ binaryNativeCode ];
+  };
 }

@@ -23,4 +23,12 @@ in pkgs.appimageTools.wrapType2 {
     Terminal=false
     EOF
   '';
+  meta = {
+    homepage = "https://rootapp.com";
+    description = "Root Field Service Management";
+    license = lib.licenses.unfree;
+    platforms = [ "x86_64-linux" ];
+    mainProgram = "rootapp";
+    sourceProvenance = with lib.sourceTypes; [ binaryNativeCode ];
+  };
 }
