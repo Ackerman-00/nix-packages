@@ -12,7 +12,6 @@ Zero-maintenance NixOS flake for **RootApp**, **OpenCode Desktop**, **Helium** a
 ## Features
 
 * **Desktop Integration:** Ships proper `.desktop` entries and icons for Wayland/X11.
-* **Binary-First:** Every package repackages the upstream's official prebuilt release artifact (AppImage/.deb/tar.xz) — nothing is built from source. Declared via `meta.sourceProvenance = [ binaryNativeCode ]` on every package.
 * **Zero-Maintenance:** GitHub Actions checks upstream daily and auto-updates versions and hashes.
 * **Autonomous Maintainer:** An AI agent ([opencode-schedule](.github/workflows/opencode-schedule.yml)) runs every 6 hours — it verifies builds, audits dependencies, fixes packaging issues, and triages issues/PRs. It reports through [.opencode-relay.md](.opencode-relay.md), and can be invoked on demand by commenting `/oc` or `/opencode` on any issue or PR.
 
