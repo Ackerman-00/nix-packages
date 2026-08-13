@@ -1,16 +1,18 @@
 # Ackerman's NixOS Packages
 
-Zero-maintenance NixOS flake for **RootApp** and **OpenCode Desktop**.
+Zero-maintenance NixOS flake for **RootApp**, **OpenCode Desktop** and **Helium**.
 
 ## Packages
 
 * `rootapp` — Root Field Service Management (AppImage)
 * `opencode-desktop` — AI coding agent desktop client (.deb)
+* `helium` — Private, fast, and honest web browser based on Chromium (tar.xz, x86_64 + aarch64)
 
 ## Features
 
 * **Desktop Integration:** Ships proper `.desktop` entries and icons for Wayland/X11.
 * **Zero-Maintenance:** GitHub Actions checks upstream daily and auto-updates versions and hashes.
+* **Autonomous Maintainer:** An AI agent ([opencode-schedule](.github/workflows/opencode-schedule.yml)) runs every 6 hours — it verifies builds, audits dependencies, fixes packaging issues, and triages issues/PRs. It reports through [.opencode-relay.md](.opencode-relay.md), and can be invoked on demand by commenting `/oc` or `/opencode` on any issue or PR.
 
 ---
 
@@ -50,6 +52,7 @@ Pass the inputs to your system configuration and add the desired applications to
             # Add the packages here
             inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.rootapp
             inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.opencode-desktop
+            inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.helium
           ];
         })
       ];
@@ -63,4 +66,5 @@ Pass the inputs to your system configuration and add the desired applications to
 ```bash
 nix run github:Ackerman-00/nix-packages#rootapp
 nix run github:Ackerman-00/nix-packages#opencode-desktop
+nix run github:Ackerman-00/nix-packages#helium
 ```
