@@ -228,6 +228,19 @@ jobs:
                     Install the resulting squashfs-root tree VERBATIM -
                     keep bin/shared/lib/etc together, the main binary
                     resolves those sibling dirs relative to itself.
+                    The AppImage entry point is AppRun.sh, which sources
+                    AppRun.lib + every bin/*.hook then execs the sharun
+                    runtime; pkgs/protonplus.nix replaces it with a
+                    bin/<app> wrapper that sources only the 01-*.hook hooks
+                    (CA-certs + hardcoded /tmp path mapping) and execs the
+                    runtime renamed to bin/<app>-runtime with a
+                    shared/bin/<app>-runtime symlink. That wrapper is
+                    load-bearing - the hooks are the ONLY thing that points
+                    the patched p11-kit-trust.so at the host CA store
+                    (/tmp/.___host-certs/ca-certificates.crt) and maps the
+                    hardcoded /tmp/pKE and /tmp/3J=1Z paths, so without
+                    them every HTTPS download in the app fails. Never
+                    remove or rewrite it.
                  Keep the existing per-package method unless upstream changes
                  the artifact type.
               c. NEW PACKAGES (when a user or issue asks for a new app):
@@ -553,10 +566,17 @@ jobs:
                  built binary:
                  OUT=$(nix path-info .#<pkg>)
                  docker run --rm -v /nix/store:/nix/store:ro ubuntu:24.04 \
-                   bash -lc '
-                     ldd "$OUT/bin/<bin>" | grep "not found"   # MUST print nothing
-                     "$OUT/bin/<bin>" --version                # exit 0 = smoke passed
-                   '
+                    bash -lc '
+                      ldd "$OUT/bin/<bin>" | grep "not found"   # MUST print nothing
+                      "$OUT/bin/<bin>" --version                # exit 0 = smoke passed
+                    '
+                  For sharun AppImages with hooks (pkgs/protonplus.nix):
+                  after the smoke test, verify the hook artifacts exist -
+                  run the binary, then check that
+                  /tmp/.___host-certs/ca-certificates.crt, /tmp/pKE and
+                  /tmp/3J=1Z are present in the container. Their absence
+                  means the wrapper/hooks are broken and HTTPS downloads
+                  inside the app will fail - fix, do not skip.
                  The base image has no nix closure and no buildInputs - the
                  ONLY libraries available are the ones the package's own
                  closure provides. Any lib the binary needs that is NOT in its
