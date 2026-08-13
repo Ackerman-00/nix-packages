@@ -9,12 +9,6 @@ Zero-maintenance NixOS flake for **RootApp**, **OpenCode Desktop**, **Helium** a
 * `helium` — Private, fast, and honest web browser based on Chromium (tar.xz, x86_64 + aarch64)
 * `protonplus` — Modern Wine/Proton compatibility tools manager (AppImage, x86_64 + aarch64)
 
-## Features
-
-* **Desktop Integration:** Ships proper `.desktop` entries and icons for Wayland/X11.
-* **Zero-Maintenance:** GitHub Actions checks upstream daily and auto-updates versions and hashes.
-* **Autonomous Maintainer:** An AI agent ([opencode-schedule](.github/workflows/opencode-schedule.yml)) runs every 6 hours — it verifies builds, audits dependencies, fixes packaging issues, and triages issues/PRs. It reports through [.opencode-relay.md](.opencode-relay.md), and can be invoked on demand by commenting `/oc` or `/opencode` on any issue or PR.
-
 ---
 
 ## How to Add it to your NixOS System
