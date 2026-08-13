@@ -7,14 +7,22 @@
 
   outputs = { self, nixpkgs }:
     let
-      system = "x86_64-linux";
-      pkgs = nixpkgs.legacyPackages.${system};
       lib = nixpkgs.lib;
+      systems = [ "x86_64-linux" "aarch64-linux" ];
+      forAllSystems = lib.genAttrs systems;
     in {
-      packages.${system} = {
-        rootapp = pkgs.callPackage ./pkgs/rootapp.nix { inherit lib; };
-        opencode-desktop = pkgs.callPackage ./pkgs/opencode-desktop.nix { inherit lib; };
-        default = self.packages.${system}.rootapp;
-      };
+      packages = forAllSystems (system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+          helium = pkgs.callPackage ./pkgs/helium.nix { inherit lib; };
+        in {
+          helium = helium;
+        } // lib.optionalAttrs (system == "x86_64-linux") {
+          rootapp = pkgs.callPackage ./pkgs/rootapp.nix { inherit lib; };
+          opencode-desktop = pkgs.callPackage ./pkgs/opencode-desktop.nix { inherit lib; };
+          default = self.packages.${system}.rootapp;
+        } // lib.optionalAttrs (system == "aarch64-linux") {
+          default = helium;
+        });
     };
 }

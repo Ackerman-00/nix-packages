@@ -67,11 +67,43 @@ jobs:
             UPDATED=1
           fi
 
+          # Helium Update
+          HE_OLD_VER=$(grep -oP 'version = "\K[^"]+' pkgs/helium.nix)
+          HE_NEW_VER=$(curl -sL https://api.github.com/repos/imputnet/helium-linux/releases/latest | jq -r .tag_name)
+
+          if [ -z "$HE_NEW_VER" ] || [ "$HE_NEW_VER" = "null" ]; then
+            echo "ERROR: Failed to fetch helium version"
+            exit 1
+          fi
+
+          if [ "$HE_OLD_VER" != "$HE_NEW_VER" ]; then
+            HE_X64_RAW=$(nix store prefetch-file --refresh "https://github.com/imputnet/helium-linux/releases/download/${HE_NEW_VER}/helium-${HE_NEW_VER}-x86_64_linux.tar.xz" --json 2>&1)
+            HE_X64_HASH=$(echo "$HE_X64_RAW" | jq -r .hash)
+            HE_ARM_RAW=$(nix store prefetch-file --refresh "https://github.com/imputnet/helium-linux/releases/download/${HE_NEW_VER}/helium-${HE_NEW_VER}-arm64_linux.tar.xz" --json 2>&1)
+            HE_ARM_HASH=$(echo "$HE_ARM_RAW" | jq -r .hash)
+
+            if [ -z "$HE_X64_HASH" ] || [ "$HE_X64_HASH" = "null" ]; then
+              echo "ERROR: Failed to fetch helium x86_64 hash. Raw output: $HE_X64_RAW"
+              exit 1
+            fi
+            if [ -z "$HE_ARM_HASH" ] || [ "$HE_ARM_HASH" = "null" ]; then
+              echo "ERROR: Failed to fetch helium arm64 hash. Raw output: $HE_ARM_RAW"
+              exit 1
+            fi
+
+            sed -i 's|version = ".*"|version = "'"$HE_NEW_VER"'"|' pkgs/helium.nix
+            sed -i '/x86_64_linux.tar.xz";/,/hash =/ s|hash = "[^"]*"|hash = "'"$HE_X64_HASH"'"|' pkgs/helium.nix
+            sed -i '/arm64_linux.tar.xz";/,/hash =/ s|hash = "[^"]*"|hash = "'"$HE_ARM_HASH"'"|' pkgs/helium.nix
+            UPDATED=1
+          else
+            echo "Helium: no change (version: $HE_NEW_VER)"
+          fi
+
           # Commit
           if [ "$UPDATED" -eq 1 ]; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add pkgs/rootapp.nix pkgs/opencode-desktop.nix
+            git add pkgs/rootapp.nix pkgs/opencode-desktop.nix pkgs/helium.nix
             git commit -m "chore: auto-update packages"
             git push
           fi
