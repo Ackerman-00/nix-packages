@@ -104,7 +104,7 @@ in pkgs.stdenv.mkDerivation {
   installPhase = ''
     runHook preInstall
     mkdir -p $out/lib/zen-bin-${version}
-    cp -r "$src"/* $out/lib/zen-bin-${version}/
+    cp -r . $out/lib/zen-bin-${version}/
     mkdir -p $out/bin
     ln -s $out/lib/zen-bin-${version}/zen $out/bin/zen-browser
     install -D $out/lib/zen-bin-${version}/browser/chrome/icons/default/default16.png \
