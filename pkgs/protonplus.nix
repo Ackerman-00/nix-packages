@@ -75,6 +75,8 @@ EOF
     runHook postInstall
   '';
 
+  doInstallCheck = true;
+
   installCheckPhase = ''
     $out/bin/protonplus version >/dev/null
   '';

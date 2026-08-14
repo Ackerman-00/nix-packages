@@ -149,6 +149,8 @@ pkgs.stdenv.mkDerivation {
     )
   '';
 
+  doInstallCheck = true;
+
   installCheckPhase = ''
     $out/bin/helium --version
   '';
