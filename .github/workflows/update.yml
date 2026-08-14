@@ -131,11 +131,43 @@ jobs:
             echo "ProtonPlus: no change (version: $PP_NEW_VER)"
           fi
 
+          # Zen Browser Update
+          ZB_OLD_VER=$(grep -oP 'version = "\K[^"]+' pkgs/zen-browser.nix)
+          ZB_NEW_VER=$(curl -sL https://api.github.com/repos/zen-browser/desktop/releases/latest | jq -r .tag_name)
+
+          if [ -z "$ZB_NEW_VER" ] || [ "$ZB_NEW_VER" = "null" ]; then
+            echo "ERROR: Failed to fetch zen-browser version"
+            exit 1
+          fi
+
+          if [ "$ZB_OLD_VER" != "$ZB_NEW_VER" ]; then
+            ZB_X64_RAW=$(nix store prefetch-file --refresh "https://github.com/zen-browser/desktop/releases/download/${ZB_NEW_VER}/zen.linux-x86_64.tar.xz" --json 2>&1)
+            ZB_X64_HASH=$(echo "$ZB_X64_RAW" | jq -r .hash)
+            ZB_ARM_RAW=$(nix store prefetch-file --refresh "https://github.com/zen-browser/desktop/releases/download/${ZB_NEW_VER}/zen.linux-aarch64.tar.xz" --json 2>&1)
+            ZB_ARM_HASH=$(echo "$ZB_ARM_RAW" | jq -r .hash)
+
+            if [ -z "$ZB_X64_HASH" ] || [ "$ZB_X64_HASH" = "null" ]; then
+              echo "ERROR: Failed to fetch zen-browser x86_64 hash. Raw output: $ZB_X64_RAW"
+              exit 1
+            fi
+            if [ -z "$ZB_ARM_HASH" ] || [ "$ZB_ARM_HASH" = "null" ]; then
+              echo "ERROR: Failed to fetch zen-browser aarch64 hash. Raw output: $ZB_ARM_RAW"
+              exit 1
+            fi
+
+            sed -i 's|version = ".*"|version = "'"$ZB_NEW_VER"'"|' pkgs/zen-browser.nix
+            sed -i '/zen.linux-x86_64.tar.xz";/,/hash =/ s|hash = "[^"]*"|hash = "'"$ZB_X64_HASH"'"|' pkgs/zen-browser.nix
+            sed -i '/zen.linux-aarch64.tar.xz";/,/hash =/ s|hash = "[^"]*"|hash = "'"$ZB_ARM_HASH"'"|' pkgs/zen-browser.nix
+            UPDATED=1
+          else
+            echo "Zen Browser: no change (version: $ZB_NEW_VER)"
+          fi
+
           # Commit
           if [ "$UPDATED" -eq 1 ]; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add pkgs/rootapp.nix pkgs/opencode-desktop.nix pkgs/helium.nix pkgs/protonplus.nix
+            git add pkgs/rootapp.nix pkgs/opencode-desktop.nix pkgs/helium.nix pkgs/protonplus.nix pkgs/zen-browser.nix
             git commit -m "chore: auto-update packages"
             git push
           fi

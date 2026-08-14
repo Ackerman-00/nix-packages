@@ -22,9 +22,11 @@
           };
           helium = pkgs.callPackage ./pkgs/helium.nix { inherit lib; };
           protonplus = pkgs.callPackage ./pkgs/protonplus.nix { inherit lib; };
+          zen-browser = pkgs.callPackage ./pkgs/zen-browser.nix { inherit lib; };
         in {
           helium = helium;
           protonplus = protonplus;
+          zen-browser = zen-browser;
         } // lib.optionalAttrs (system == "x86_64-linux") {
           rootapp = pkgs.callPackage ./pkgs/rootapp.nix { inherit lib; };
           opencode-desktop = pkgs.callPackage ./pkgs/opencode-desktop.nix { inherit lib; };

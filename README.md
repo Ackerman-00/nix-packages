@@ -4,6 +4,7 @@
 * `opencode-desktop` — AI coding agent desktop client (.deb)
 * `helium` — Private, fast, and honest web browser based on Chromium (tar.xz, x86_64 + aarch64)
 * `protonplus` — Modern Wine/Proton compatibility tools manager (AppImage, x86_64 + aarch64)
+* `zen-browser` — Beautifully designed, privacy-focused Firefox fork (tar.xz, x86_64 + aarch64)
 
 ---
 
@@ -45,6 +46,7 @@ Pass the inputs to your system configuration and add the desired applications to
             inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.opencode-desktop
             inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.helium
             inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.protonplus
+            inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.zen-browser
           ];
         })
       ];
@@ -60,4 +62,5 @@ nix run github:Ackerman-00/nix-packages#rootapp
 nix run github:Ackerman-00/nix-packages#opencode-desktop
 nix run github:Ackerman-00/nix-packages#helium
 nix run github:Ackerman-00/nix-packages#protonplus
+nix run github:Ackerman-00/nix-packages#zen-browser
 ```
