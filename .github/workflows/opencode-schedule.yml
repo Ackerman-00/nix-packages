@@ -430,6 +430,72 @@ jobs:
                  .opencode-relay.md and open an issue with the diff for the
                  owner. Meanwhile apply the correct version/hash to
                  pkgs/*.nix manually so the repo stays current NOW.
+              e. TEAR THE ARTIFACT APART - THE HASH IS NOT THE TRUTH. A
+                 matching hash only proves the bytes were fetched, not that
+                 the packaged app is complete or correct. Download + extract
+                 EVERY package's artifact into /tmp (NEVER the repo tree) and
+                 verify against the packed tree:
+                 1. READ THE REAL VERSION FROM INSIDE the artifact
+                    (X-AppImage-Version in the .desktop, package.json inside
+                    app.asar, --version output, binary strings) - it must
+                    match the version pinned in pkgs/<pkg>.nix. A pinned
+                    version that matches no real upstream release, or is
+                    NEWER than the actual artifact, is a bug - fix it.
+                 2. UPSTREAM COMPLETENESS: every user-facing file upstream
+                    ships in the artifact (main binary, .desktop entry, icons,
+                    metainfo, lib dirs, sidecars, resources) MUST end up in
+                    the nix package. Anything we ship that the artifact no
+                    longer contains is stale - prune it. Anything the artifact
+                    ships that the package drops is incomplete - add it.
+                 3. DEPENDENCY TEAR: list every NEEDED soname the binaries
+                    reference (`readelf -d` / nix loader --list) and reconcile
+                    against runtimeDeps/buildInputs - every external lib must
+                    resolve (missing = bug, add it), and note explicitly what
+                    the artifact bundles itself.
+                 4. WRAPPER/PATCHELF SANITY: the interpreter must point at the
+                    nix loader (except FHS-wrapped apps), and any wrapper
+                    (helium-style LD_LIBRARY_PATH, protonplus-style hook
+                    wrapper) must still exist intact. A changed artifact type
+                    (e.g. AppImage -> tar.xz) changes how to pack - adapt and
+                    re-verify, never assume the old method still works.
+              f. MISSING-PACKAGE AUDIT - "IS ANYTHING MISSING?" (MANDATORY,
+                 not optional). Every run must also ask whether the repo is
+                 MISSING packages or entries, not just whether existing ones
+                 are stale:
+                 1. INVENTORY SYNC: the package inventory (README.md package
+                    list, flake.nix packages.<system>, update.yml update
+                    blocks, pkgs/*.nix files) must all agree - a package in
+                    one but not the others is a bug. Every package must have
+                    its update.yml block, README entry, and flake.nix wiring
+                    (both systems it supports).
+                 2. UPSTREAM ARTIFACT CHECK: for each package, confirm the
+                    artifact type the updater pins is STILL what upstream
+                    ships. If upstream renamed the asset, dropped one arch,
+                    added a new arch (e.g. new arm64 build), or switched
+                    format (AppImage -> tar.xz), the updater block must be
+                    updated to match - that is a missing-update bug even when
+                    hashes still match.
+                 3. NEW-APP SCAN: web-search the upstream project of every
+                    packaged app for NEW companion apps (e.g. new official
+                    desktop clients, launchers, companion tools) that ship
+                    official prebuilt Linux artifacts and are not in nixpkgs
+                    or where nixpkgs trails - if such an app exists, package
+                    it (BINARY-FIRST pattern, full verification chain,
+                    README + update.yml block + flake.nix wiring) as its own
+                    atomic commit. Also check open issues/PRs for requests
+                    that were never acted on. The repo's mission is to ship
+                    the latest official binaries faster than nixpkgs - if a
+                    qualifying app is missing, that IS unfinished work.
+                    NEVER copy a package from a sibling repo as the reason it
+                    belongs here - only real upstream binaries + the repo's
+                    mission justify a new package.
+              g. MANDATORY DELIVERABLE - the updater-testing ledger in your
+                 final summary: one row per package (updater simulated
+                 correctly / version matches artifact-inside / completeness
+                 ok / deps ok / no missing entries), and a row for the
+                 missing-package audit (inventory in sync / no new upstream
+                 artifacts missed / new apps considered). Any package missing
+                 from this ledger = the run is not finished.
 
             NIX REVISION DISCIPLINE (MANDATORY - a Nix package update is a
             version and/or hash change, and there is no release counter to fall
