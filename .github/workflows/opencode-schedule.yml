@@ -44,10 +44,13 @@ jobs:
           git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
       - name: Install Nix
-        uses: cachix/install-nix-action@v22
+        uses: cachix/install-nix-action@v31
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes fetch-closure
+
+      - name: Upgrade Nix to latest stable (never hardcode a version pin)
+        run: sudo -i nix upgrade-nix
 
       - name: Install opencode (latest)
         shell: bash
@@ -106,14 +109,14 @@ jobs:
               Supported systems: x86_64-linux and aarch64-linux (per-package
               support is declared in each pkgs/*.nix / flake.nix - read it).
             - update.yml (GitHub Actions, "Packages Auto-Update") runs daily at
-              00:00 UTC: it checks every package's upstream (fixed-URL
-              artifacts via `nix store prefetch-file` hash comparison,
-              GitHub-release artifacts via the releases API) and bumps
-              pkgs/*.nix for whichever changed, then commits to main directly
-              ("chore: auto-update packages"). It does NOT touch flake.lock.
-              Read it to see exactly which URL each package is checked
-              against - keep it in sync with pkgs/*.nix whenever a source
-              changes (a new package = a new block in update.yml).
+              00:00 UTC: it re-prefetches and hash-compares EVERY package's
+              assets every run (via `nix store prefetch-file`), even when the
+              version tag is unchanged - it catches same-version re-rolls and
+              bumps version + hashes only on real changes, then commits to main
+              directly ("chore: auto-update packages"). It does NOT touch
+              flake.lock. Read it to see exactly which URL each package is
+              checked against - keep it in sync with pkgs/*.nix whenever a
+              source changes (a new package = a new block in update.yml).
             - BUILD VERIFICATION IS NIX, AND NIX IS PREINSTALLED in this job
               (cachix/install-nix-action, experimental features enabled).
               `nix build .#<pkg>` builds in a sandbox and runs installCheckPhase
@@ -396,6 +399,37 @@ jobs:
                  update nixpkgs` when there is a CONCRETE reason (a build fails
                  because nixpkgs is too stale), never for churn. If you do
                  update it, verify every package still builds after the bump.
+
+            UPSTREAM UPDATER TESTING (MANDATORY - "prove update.yml works,
+            don't assume it"). The daily updater is the repo's only automatic
+            link to upstream; a broken updater silently lets the repo go stale
+            while looking healthy. Every run must prove each package's update
+            logic works end-to-end against LIVE upstream:
+              a. SIMULATE THE UPDATER FRESH. For EVERY package, replicate
+                 update.yml's logic by hand on a clean tree: read the pinned
+                 version + hash(es) from pkgs/<pkg>.nix, query the real
+                 upstream (`gh api repos/<owner>/<repo>/releases/latest --jq
+                 .tag_name` for GitHub-release sources, `nix store
+                 prefetch-file --refresh <url>` for fixed URLs), and diff.
+                 The updater is correct ONLY if your manual simulation would
+                 produce exactly what update.yml would produce.
+              b. VERIFY "LATEST" IS ACTUALLY LATEST. Confirm the detected
+                 version is really the newest release (upstream release page,
+                 tags, `git ls-remote --tags <origin>`), and that the asset
+                 URL returns 200 - never trust update.yml's pick blindly.
+              c. HASH-ALWAYS, NOT VERSION-GATED. Upstream re-publishes
+                 artifacts under the same tag (re-rolled AppImage/deb): the
+                 version is unchanged but the hash differs. ALWAYS
+                 re-prefetch every asset URL and compare hashes even when the
+                 version is unchanged. A version-gated check (hash updated
+                 only when the version changed) is a BUG.
+              d. A BROKEN UPDATER IS A REPO BUG. If update.yml misses a real
+                 upstream change (wrong URL, version-gated logic, a sed that
+                 cannot update the file), you cannot push workflow changes
+                 (TOKENS rule): document the exact problem + full diff in
+                 .opencode-relay.md and open an issue with the diff for the
+                 owner. Meanwhile apply the correct version/hash to
+                 pkgs/*.nix manually so the repo stays current NOW.
 
             NIX REVISION DISCIPLINE (MANDATORY - a Nix package update is a
             version and/or hash change, and there is no release counter to fall

@@ -33,10 +33,13 @@ jobs:
           git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
       - name: Install Nix
-        uses: cachix/install-nix-action@v22
+        uses: cachix/install-nix-action@v31
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes fetch-closure
+
+      - name: Upgrade Nix to latest stable (never hardcode a version pin)
+        run: sudo -i nix upgrade-nix
 
       - name: Install opencode (latest)
         shell: bash
