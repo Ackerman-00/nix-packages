@@ -1,7 +1,7 @@
 ## Packages
 
 * `rootapp` — Root Field Service Management (AppImage)
-* `opencode-desktop` — AI coding agent desktop client (.deb)
+* `opencode-desktop` — AI coding agent desktop client (.deb, x86_64 + aarch64)
 * `helium` — Private, fast, and honest web browser based on Chromium (tar.xz, x86_64 + aarch64)
 * `protonplus` — Modern Wine/Proton compatibility tools manager (AppImage, x86_64 + aarch64)
 * `zen-browser` — Beautifully designed, privacy-focused Firefox fork (tar.xz, x86_64 + aarch64)

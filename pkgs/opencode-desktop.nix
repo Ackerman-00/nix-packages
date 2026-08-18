@@ -2,15 +2,23 @@
 
 let
   electron = electron_42;
+
+  archives = {
+    x86_64-linux = pkgs.fetchurl {
+      url = "https://github.com/anomalyco/opencode/releases/download/v1.18.18/opencode-desktop-linux-amd64.deb";
+      hash = "sha256-e31ka5x82X8N8JipTEcITx4Wbw38RStyhwRZUuES1Io=";
+    };
+    aarch64-linux = pkgs.fetchurl {
+      url = "https://github.com/anomalyco/opencode/releases/download/v1.18.18/opencode-desktop-linux-arm64.deb";
+      hash = "sha256-7qP2pb+BfTPx0wYVialVP6M3Cb8SWqz+T+Z38x8f6FM=";
+    };
+  };
 in
 pkgs.stdenv.mkDerivation rec {
   pname = "opencode-desktop";
   version = "v1.18.18";
 
-  src = pkgs.fetchurl {
-    url = "https://github.com/anomalyco/opencode/releases/download/${version}/opencode-desktop-linux-amd64.deb";
-    hash = "sha256-e31ka5x82X8N8JipTEcITx4Wbw38RStyhwRZUuES1Io=";
-  };
+  src = archives.${pkgs.stdenv.hostPlatform.system};
 
   nativeBuildInputs = with pkgs; [
     dpkg
@@ -26,6 +34,8 @@ pkgs.stdenv.mkDerivation rec {
   autoPatchelfIgnoreMissingDeps = [
     "libc.musl-x86_64.so.1"
     "libc.musl-x86_64.so"
+    "libc.musl-aarch64.so.1"
+    "libc.musl-aarch64.so"
   ];
 
   desktopItems = [
@@ -88,7 +98,7 @@ pkgs.stdenv.mkDerivation rec {
     homepage = "https://opencode.ai";
     description = "AI coding agent desktop client";
     license = lib.licenses.mit;
-    platforms = [ "x86_64-linux" ];
+    platforms = [ "x86_64-linux" "aarch64-linux" ];
     mainProgram = "opencode-desktop";
     sourceProvenance = with lib.sourceTypes; [ binaryNativeCode ];
   };
