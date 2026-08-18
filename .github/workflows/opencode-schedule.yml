@@ -224,16 +224,16 @@ jobs:
                     `unsquashfs -o <offset>` in the build (or
                     pkgs.appimageTools.extract / appimageTools.wrapType2 for
                     FHS wrapping), install the AppDir contents.
-                 4. sharun-based AppImage (modern, no squashfs superblock):
-                    appimageTools.extractType2 FAILS on it (that is why
-                    pkgs/protonplus.nix self-extracts with
+                  4. sharun-based AppImage (modern, no squashfs superblock):
+                    appimageTools.extractType2 FAILS on it (that is why the
+                    package self-extracts with
                     `./<app>.AppImage --appimage-extract` in buildPhase).
                     Install the resulting squashfs-root tree VERBATIM -
                     keep bin/shared/lib/etc together, the main binary
                     resolves those sibling dirs relative to itself.
                     The AppImage entry point is AppRun.sh, which sources
                     AppRun.lib + every bin/*.hook then execs the sharun
-                    runtime; pkgs/protonplus.nix replaces it with a
+                    runtime; the package replaces it with a
                     bin/<app> wrapper that sources only the 01-*.hook hooks
                     (CA-certs + hardcoded /tmp path mapping) and execs the
                     runtime renamed to bin/<app>-runtime with a
@@ -454,8 +454,9 @@ jobs:
                     the artifact bundles itself.
                  4. WRAPPER/PATCHELF SANITY: the interpreter must point at the
                     nix loader (except FHS-wrapped apps), and any wrapper
-                    (helium-style LD_LIBRARY_PATH, protonplus-style hook
-                    wrapper) must still exist intact. A changed artifact type
+                    (an LD_LIBRARY_PATH wrapper, a hook-sourcing sharun
+                    wrapper, whatever the package uses) must still exist
+                    intact. A changed artifact type
                     (e.g. AppImage -> tar.xz) changes how to pack - adapt and
                     re-verify, never assume the old method still works.
               f. MISSING-PACKAGE AUDIT - "IS ANYTHING MISSING?" (MANDATORY,
@@ -560,40 +561,40 @@ jobs:
                  re-extract, and re-derive from the NEW artifact. Never reuse
                  an old audit for a changed package.
 
-            KNOWN PACKAGE-SPECIFIC NOTES - THE RIGOR BELOW APPLIES TO EVERY
-            PACKAGE, NOT JUST THE EXAMPLE NAMED. For EVERY package, establish
-            the authoritative reference chain: (1) this repo's pkgs/*.nix, (2)
-            nixpkgs's packaging of the same or similar software (search
-            pkgs/by-name/ in the nixpkgs source, or the nixpkgs GitHub repo -
-            e.g. how nixpkgs packages brave/chromium/electron apps), (3) the
-            upstream project itself, and (4) the actual source/binary artifact,
-            opened and inspected (see the DEEP AUDIT above). Never special-case
-            only helium - treat EVERY prebuilt-binary package this way: tear
-            the artifact apart, read the real version from inside, and verify
-            the hash against the pinned one in pkgs/*.nix.
+            AUTHORITATIVE REFERENCE CHAIN (MANDATORY - applied identically to
+            EVERY package, no exceptions, no favorites). For EVERY package,
+            establish the authoritative reference chain: (1) this repo's
+            pkgs/*.nix, (2) nixpkgs's packaging of the same or similar
+            software (search pkgs/by-name/ in the nixpkgs source, or the
+            nixpkgs GitHub repo - e.g. how nixpkgs packages the same app
+            family), (3) the upstream project itself, and (4) the actual
+            source/binary artifact, opened and inspected (see the DEEP AUDIT
+            above). NEVER special-case any package - treat EVERY prebuilt-
+            binary package the same way: tear the artifact apart, read the
+            real version from inside, and verify the hash against the pinned
+            one in pkgs/*.nix.
 
-            WORKED EXAMPLE (helium): helium is a Chromium-based browser
-            distributed as tar.xz (x86_64 + arm64) from
-            https://github.com/imputnet/helium-linux/releases. Authoritative
-            references, in priority order:
-              1. THIS REPO: pkgs/helium.nix - owner-tested, it IS the source of
-                 truth. It uses stdenv.mkDerivation, sets
-                 --set-interpreter to the nix dynamic linker via patchelf,
-                 wraps with wrapGAppsHook3 (overridden to use makeShellWrapper
-                 - makeBinaryWrapper would pass the NIXOS_OZONE_WL shell
-                 expansion literally!), sets LD_LIBRARY_PATH via gappsWrapperArgs
-                 from a runtimeDeps list, and has an installCheckPhase running
-                 `$out/bin/helium --version`.
-              2. NIXPKGS: brave.nix / chromium packaging show the canonical
-                 pattern for chrome-wrapper (ozone flags, LD_LIBRARY_PATH,
-                 xdg-utils on PATH).
-              3. TEAR THE TARBALL: download, extract, `readelf -d` every ELF,
-                 `file` the binaries, check the NEEDED sonames against
-                 runtimeDeps, verify the wrapper script shebang and the
-                 CHROME_VERSION_EXTRA value.
-            Do NOT trust the AUR version blindly and do NOT invent versions.
-            Keep version + both hashes (x86_64 and arm64!) in sync with the
-            actual GitHub release.
+            GENERIC PACKAGING GOTCHAS THAT APPLY TO EVERY PACKAGE, LEARNED
+            FROM REAL BUILD FAILURES IN THIS REPO - CHECK FOR EACH ONE ON
+            EVERY PACKAGE, WHATEVER IT IS:
+              1. CHROMIUM-FAMILY / ELECTRON BINARIES (any browser or
+                 Electron-based app in the repo): check how nixpkgs packages
+                 the same family (chrome-wrapper pattern: ozone flags,
+                 LD_LIBRARY_PATH, xdg-utils on PATH). If the package wraps
+                 with wrapGAppsHook3, prefer makeShellWrapper over
+                 makeBinaryWrapper - makeBinaryWrapper passes shell
+                 expansions like $NIXOS_OZONE_WL LITERALLY, breaking the
+                 wrapper at runtime. Set --set-interpreter to the nix
+                 dynamic linker via patchelf, and verify the version string
+                 embedded in the artifact (e.g. the chrome-version constant
+                 in the binary's resources) matches the pinned version.
+              2. MULTI-ARCH PACKAGES: keep ALL per-arch hashes in sync with
+                 the same release (x86_64 AND aarch64). Never update one
+                 arch and leave the other stale.
+              3. NEVER trust a version you have not verified online (AUR,
+                 release pages, or the artifact itself) and never invent
+                 versions. A pinned version that matches no real upstream
+                 release is a bug.
 
             BUILD-VERIFICATION SWEEP (MANDATORY - `nix build` MUST pass for the
             flake as users would consume it). A green eval is NOT a green build:
@@ -670,7 +671,7 @@ jobs:
                       ldd "$OUT/bin/<bin>" | grep "not found"   # MUST print nothing
                       "$OUT/bin/<bin>" --version                # exit 0 = smoke passed
                     '
-                  For sharun AppImages with hooks (pkgs/protonplus.nix):
+                  For sharun AppImages with hook wrappers:
                   after the smoke test, verify the hook artifacts exist -
                   run the binary, then check that
                   /tmp/.___host-certs/ca-certificates.crt, /tmp/pKE and
