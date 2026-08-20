@@ -1,6 +1,6 @@
 ## Packages
 
-* `rootapp` — Root Field Service Management (AppImage)
+* `rootapp` — Root Field Service Management (AppImage, x86_64 + aarch64)
 * `opencode-desktop` — AI coding agent desktop client (.deb, x86_64 + aarch64)
 * `helium` — Private, fast, and honest web browser based on Chromium (tar.xz, x86_64 + aarch64)
 * `protonplus` — Modern Wine/Proton compatibility tools manager (AppImage, x86_64 + aarch64)
