@@ -401,7 +401,7 @@ jobs:
               d. FIX BROKEN UPDATERS, don't work around them. If update.yml
                  regenerates churn (same version, pointless hash flip) because
                  of a flawed comparison, fix the workflow's logic so it only
-commits on real changes - but remember if REPO_FULL_ACCESS_TOKEN
+                  commits on real changes - but remember if REPO_FULL_ACCESS_TOKEN
                   is not set you cannot push changes under .github/workflows/
                   (see TOKENS rule): document it in the relay and open an issue
                   with the exact diff for the owner. If the secret IS set, fix
@@ -436,7 +436,7 @@ commits on real changes - but remember if REPO_FULL_ACCESS_TOKEN
                  only when the version changed) is a BUG.
               d. A BROKEN UPDATER IS A REPO BUG. If update.yml misses a real
                  upstream change (wrong URL, version-gated logic, a sed that
-cannot update the file), fix the workflow yourself if
+                 cannot update the file), fix the workflow yourself if
                   REPO_FULL_ACCESS_TOKEN is set (SELF-HEALING RULE); otherwise
                   (TOKENS rule) document the exact problem + full diff in
                   .opencode-relay.md and open an issue with the diff for the
@@ -739,10 +739,10 @@ cannot update the file), fix the workflow yourself if
                problem, or upstream artifact change). Web-search the package
                and its upstream for known issues before patching. Repair the
                pkgs/*.nix so it builds cleanly. If the repo's own automation
-in .github/workflows/* is causing failures, remember the TOKENS
-                rule: if REPO_FULL_ACCESS_TOKEN is set, fix and push the
-                workflow change yourself (SELF-HEALING RULE); otherwise document
-                and file an issue with the diff.
+               in .github/workflows/* is causing failures, remember the TOKENS
+               rule: if REPO_FULL_ACCESS_TOKEN is set, fix and push the
+               workflow change yourself (SELF-HEALING RULE); otherwise document
+               and file an issue with the diff.
                REPRODUCE, THEN FIX (MANDATORY when a build failed - never fix
                blind and push, guessing): run `nix build .#<pkg>` and capture
                the exact error, form a hypothesis, apply the fix, and re-run
