@@ -36,12 +36,13 @@ jobs:
       - uses: actions/checkout@v6.1.0
         with:
           persist-credentials: false
+          token: ${{ secrets.REPO_FULL_ACCESS_TOKEN || github.token }}
 
       - name: Configure git auth for pushes
         run: |
           git config --global user.name "opencode-agent[bot]"
           git config --global user.email "41898282+opencode-agent[bot]@users.noreply.github.com"
-          git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          git config --global url."https://x-access-token:${{ secrets.REPO_FULL_ACCESS_TOKEN || github.token }}@github.com/".insteadOf "https://github.com/"
 
       - name: Install Nix
         uses: cachix/install-nix-action@v31
@@ -145,20 +146,28 @@ jobs:
               .hash`. Compare against upstream change by re-prefetching and
               diffing - if the hash matches what is in the file, nothing changed.
             - TOKENS & WORKFLOW-FILE RULE: `git push` authenticates with
-              GITHUB_TOKEN, which has contents, issues, pull-requests, and
-              actions write, but NOT the `workflows` scope: GitHub HARD-REJECTS
-              any push or API write that creates or updates files under
-              .github/workflows/ even if the spec/other files in the same commit
-              are fine (error: "refusing to allow a GitHub App to create or
-              update workflow ... without workflows permission"). Also NEVER add
-              `workflows: write` to a workflow's permissions block - that key is
-              INVALID for GITHUB_TOKEN and GitHub's validator rejects the ENTIRE
-              workflow file, killing every run of it. If a workflow file
-              genuinely needs changing: (a) describe the exact problem in
-              .opencode-relay.md and open an issue with the full diff in the body
-              (the owner applies it manually), or (b) propose it in a
-              README/relay note. Never attempt the push itself; it will always
-              fail. All other pushes (pkgs/*.nix, flake.nix, README, relay, etc.)
+              `REPO_FULL_ACCESS_TOKEN` when the owner has configured it (a
+              fine-grained PAT with Contents: read/write + Workflows:
+              read/write), falling back to GITHUB_TOKEN, which has contents,
+              issues, pull-requests, and actions write, but NOT the
+              `workflows` scope: GitHub HARD-REJECTS any push or API write
+              that creates or updates files under .github/workflows/ even if
+              the spec/other files in the same commit are fine (error:
+              "refusing to allow a GitHub App to create or update workflow
+              ... without workflows permission"). NEVER add `workflows:
+              write` to a workflow's permissions block - that key is INVALID
+              for GITHUB_TOKEN and GitHub's validator rejects the ENTIRE
+              workflow file, killing every run of it.
+              SELF-HEALING RULE: if the repo secret REPO_FULL_ACCESS_TOKEN is
+              set, you HAVE full control and MUST self-heal workflow bugs
+              yourself: fix the .github/workflows/*.yml directly, verify,
+              commit, and push - no issue needed. If the secret is NOT set
+              (check `gh secret list`), workflow changes are impossible: (a)
+              describe the exact problem in .opencode-relay.md and open an
+              issue with the full diff in the body (the owner applies it
+              manually), or (b) propose it in a README/relay note. Never
+              attempt the push itself with GITHUB_TOKEN; it will always fail.
+              All other pushes (pkgs/*.nix, flake.nix, README, relay, etc.)
               work normally - always `git fetch origin && git pull --rebase
               origin main` before pushing.
             - GIT IDENTITY (MANDATORY - "ONLY opencode-agent[bot], NOTHING ELSE").
@@ -392,9 +401,11 @@ jobs:
               d. FIX BROKEN UPDATERS, don't work around them. If update.yml
                  regenerates churn (same version, pointless hash flip) because
                  of a flawed comparison, fix the workflow's logic so it only
-                 commits on real changes - but remember you cannot push changes
-                 under .github/workflows/ (see TOKENS rule): document it in the
-                 relay and open an issue with the exact diff for the owner.
+commits on real changes - but remember if REPO_FULL_ACCESS_TOKEN
+                  is not set you cannot push changes under .github/workflows/
+                  (see TOKENS rule): document it in the relay and open an issue
+                  with the exact diff for the owner. If the secret IS set, fix
+                  and push the workflow change yourself (SELF-HEALING RULE).
               e. flake.lock: update.yml never touches it. Only run `nix flake
                  update nixpkgs` when there is a CONCRETE reason (a build fails
                  because nixpkgs is too stale), never for churn. If you do
@@ -425,11 +436,12 @@ jobs:
                  only when the version changed) is a BUG.
               d. A BROKEN UPDATER IS A REPO BUG. If update.yml misses a real
                  upstream change (wrong URL, version-gated logic, a sed that
-                 cannot update the file), you cannot push workflow changes
-                 (TOKENS rule): document the exact problem + full diff in
-                 .opencode-relay.md and open an issue with the diff for the
-                 owner. Meanwhile apply the correct version/hash to
-                 pkgs/*.nix manually so the repo stays current NOW.
+cannot update the file), fix the workflow yourself if
+                  REPO_FULL_ACCESS_TOKEN is set (SELF-HEALING RULE); otherwise
+                  (TOKENS rule) document the exact problem + full diff in
+                  .opencode-relay.md and open an issue with the diff for the
+                  owner. Meanwhile apply the correct version/hash to
+                  pkgs/*.nix manually so the repo stays current NOW.
               e. TEAR THE ARTIFACT APART - THE HASH IS NOT THE TRUTH. A
                  matching hash only proves the bytes were fetched, not that
                  the packaged app is complete or correct. Download + extract
@@ -727,9 +739,10 @@ jobs:
                problem, or upstream artifact change). Web-search the package
                and its upstream for known issues before patching. Repair the
                pkgs/*.nix so it builds cleanly. If the repo's own automation
-               in .github/workflows/* is causing failures, remember the TOKENS
-               rule: you cannot push workflow changes - document and file an
-               issue with the diff.
+in .github/workflows/* is causing failures, remember the TOKENS
+                rule: if REPO_FULL_ACCESS_TOKEN is set, fix and push the
+                workflow change yourself (SELF-HEALING RULE); otherwise document
+                and file an issue with the diff.
                REPRODUCE, THEN FIX (MANDATORY when a build failed - never fix
                blind and push, guessing): run `nix build .#<pkg>` and capture
                the exact error, form a hypothesis, apply the fix, and re-run
@@ -797,8 +810,9 @@ jobs:
                and look for recent FAILED "Packages Auto-Update" runs. Identify
                the failing step (`gh run view <id> --log-failed`) and fix the
                cause in the package files. If the workflow itself is broken
-               (bad sed, bad grep), you cannot push workflow changes (TOKENS
-               rule) - document the exact fix in the relay and file an issue
+               (bad sed, bad grep), fix the workflow yourself if
+               REPO_FULL_ACCESS_TOKEN is set (SELF-HEALING RULE); otherwise
+               (TOKENS rule) document the exact fix in the relay and file an issue
                with the diff.
 
             4. REVIEW ALL OPEN ISSUES like a human maintainer - AND REPLY.
