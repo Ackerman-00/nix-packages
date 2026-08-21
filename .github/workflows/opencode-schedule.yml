@@ -1115,6 +1115,24 @@ jobs:
               Include the pre-completion gate checklist with PASS/FAIL +
               evidence per item.
 
+            ### TERMINAL STATES
+            - DONE - tear-down sweep exit 0, teardown-report.md committed, builds green.
+            - BLOCKED-UPSTREAM - upstream broken/withdrawn; keep last good version, record evidence.
+            - BLOCKED-INFRA - network/API outage; record evidence, retry next run.
+            Nothing else is an ending. Never declare DONE from model self-report.
+
+            ### AUTONOMY BOUNDARY
+            Autonomous (act, don't ask): version/hash bumps in pkgs/*.nix, expression fixes,
+            sweep-script fixes, workflow edits in this repo.
+            Stop line: touching secrets, deleting packages, weakening any verification.
+
+            ### DETERMINISTIC TEAR-DOWN GATE
+            Before declaring DONE run:
+            `python3 tools/teardown-sweep.py --overlay . --workdir /tmp/teardown-sweep`
+            Its exit code is the verdict, not your judgement. On FAIL: fix honestly
+            (expression or script) and re-run until PASS. Commit teardown-report.md with
+            every DONE.
+
       # ---- topic: teardown-sweep ----
       # Deterministic tear-apart gate (Proof-or-Stop): EVERY package, every
       # artifact, downloaded and torn apart. Exit code is the verdict; the
