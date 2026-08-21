@@ -294,11 +294,11 @@ jobs:
             packages). NEVER trust a version, URL, checksum, or fix you have not
             verified online.
             - GITHUB API RATE LIMITS: unauthenticated api.github.com requests are
-              limited to 60/hour - you will hit this in a long run. Always send
-              `-H "Authorization: token $GITHUB_TOKEN"` on GitHub API calls, or
-              prefer `gh api <path>` which authenticates automatically and gets
-              5000/hour. If a curl call starts returning 403 rate-limit JSON,
-              switch to `gh api` immediately.
+              limited to 60/hour - you will hit this in a long run. NEVER use
+              `curl` for GitHub API calls - ALWAYS use `gh api <path>` which
+              authenticates automatically via GITHUB_TOKEN and gets 5000/hour.
+              `gh api` also handles JSON parsing, error handling, and pagination.
+              COPR API is not rate-limited the same way and needs no auth for reads.
 
             EVIDENCE & COMPLETION GATE (MANDATORY - "NO EVIDENCE, NO
             COMPLETION"). Nothing in this run is "done" because you say so -
