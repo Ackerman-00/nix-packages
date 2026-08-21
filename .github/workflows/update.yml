@@ -24,139 +24,54 @@ jobs:
       - name: Upgrade Nix to latest stable (never hardcode a version pin)
         run: sudo -i nix upgrade-nix
 
+      - name: Install nix-update
+        run: nix-env -iA nixpkgs.nix-update
+
       - name: Update Packages
         run: |
           set -euo pipefail
           UPDATED=0
-          FAILED=0
 
-          # ---- RootApp (fixed URL; hash-always check) ----
-          ROOT_FILE=pkgs/rootapp.nix
-          ROOT_OLD_HASH=$(grep -oP 'hash = "\K[^"]+' "$ROOT_FILE")
-          ROOT_URL="https://installer.rootapp.com/installer/Linux/X64/Root.AppImage"
-          ROOT_RAW=$(nix store prefetch-file --refresh "$ROOT_URL" --json 2>&1) || true
-          ROOT_NEW_HASH=$(echo "$ROOT_RAW" | jq -r .hash 2>/dev/null || echo "")
-          if [ -z "$ROOT_NEW_HASH" ] || [ "$ROOT_NEW_HASH" = "null" ]; then
-            echo "ERROR: Failed to fetch rootapp hash. Raw output: $ROOT_RAW"
-            FAILED=1
-          elif [ "$ROOT_OLD_HASH" != "$ROOT_NEW_HASH" ]; then
-            sed -i '/url = "https:\/\/installer.rootapp.com\/installer\/Linux\/X64\/Root.AppImage"/,/hash =/ s|hash = ".*"|hash = "'"$ROOT_NEW_HASH"'"|' "$ROOT_FILE"
+          # ---- RootApp: refresh hash only (no version in URL to detect) ----
+          ROOT_X64_URL="https://installer.rootapp.com/installer/Linux/X64/Root.AppImage"
+          ROOT_ARM_URL="https://installer.rootapp.com/installer/Linux/Arm64/Root.AppImage"
+          ROOT_X64_OLD=$(grep -A1 'X64/Root.AppImage' pkgs/rootapp.nix | grep -oP 'hash = "\K[^"]+')
+          ROOT_ARM_OLD=$(grep -A1 'Arm64/Root.AppImage' pkgs/rootapp.nix | grep -oP 'hash = "\K[^"]+')
+          ROOT_X64_NEW=$(nix store prefetch-file --refresh "$ROOT_X64_URL" --json 2>/dev/null | jq -r .hash || echo "")
+          ROOT_ARM_NEW=$(nix store prefetch-file --refresh "$ROOT_ARM_URL" --json 2>/dev/null | jq -r .hash || echo "")
+          if [ -n "$ROOT_X64_NEW" ] && [ "$ROOT_X64_NEW" != "null" ] && [ "$ROOT_X64_OLD" != "$ROOT_X64_NEW" ]; then
+            sed -i '/X64\/Root.AppImage/,/hash =/ s|hash = ".*"|hash = "'"$ROOT_X64_NEW"'"|' pkgs/rootapp.nix
             UPDATED=1
-            echo "RootApp: hash updated"
-          else
-            echo "RootApp: no change (hash: $ROOT_NEW_HASH)"
+            echo "rootapp: x86_64 hash refreshed"
+          fi
+          if [ -n "$ROOT_ARM_NEW" ] && [ "$ROOT_ARM_NEW" != "null" ] && [ "$ROOT_ARM_OLD" != "$ROOT_ARM_NEW" ]; then
+            sed -i '/Arm64\/Root.AppImage/,/hash =/ s|hash = ".*"|hash = "'"$ROOT_ARM_NEW"'"|' pkgs/rootapp.nix
+            UPDATED=1
+            echo "rootapp: aarch64 hash refreshed"
           fi
 
-          # ---- Opencode Desktop (GitHub release, amd64 + arm64; hash-always check) ----
-          OPEN_FILE=pkgs/opencode-desktop.nix
-          OPEN_OLD_VER=$(grep -oP 'version = "\K[^"]+' "$OPEN_FILE")
-          OPEN_OLD_X64=$(grep -A1 'opencode-desktop-linux-amd64.deb"' "$OPEN_FILE" | grep -oP 'hash = "\K[^"]+' | head -1)
-          OPEN_OLD_ARM=$(grep -A1 'opencode-desktop-linux-arm64.deb"' "$OPEN_FILE" | grep -oP 'hash = "\K[^"]+' | head -1)
-          OPEN_NEW_VER=$(curl -sL https://api.github.com/repos/anomalyco/opencode/releases/latest | jq -r .tag_name 2>/dev/null || echo "")
-          if [ -z "$OPEN_NEW_VER" ] || [ "$OPEN_NEW_VER" = "null" ]; then
-            echo "ERROR: Failed to fetch opencode version"
-            FAILED=1
-          else
-            OPEN_X64_HASH=$(nix store prefetch-file --refresh "https://github.com/anomalyco/opencode/releases/download/${OPEN_NEW_VER}/opencode-desktop-linux-amd64.deb" --json 2>/dev/null | jq -r .hash 2>/dev/null || echo "")
-            OPEN_ARM_HASH=$(nix store prefetch-file --refresh "https://github.com/anomalyco/opencode/releases/download/${OPEN_NEW_VER}/opencode-desktop-linux-arm64.deb" --json 2>/dev/null | jq -r .hash 2>/dev/null || echo "")
-            if [ -z "$OPEN_X64_HASH" ] || [ "$OPEN_X64_HASH" = "null" ] || [ -z "$OPEN_ARM_HASH" ] || [ "$OPEN_ARM_HASH" = "null" ]; then
-              echo "ERROR: Failed to fetch opencode hashes (x64: $OPEN_X64_HASH, arm: $OPEN_ARM_HASH)"
-              FAILED=1
-            elif [ "$OPEN_OLD_VER" != "$OPEN_NEW_VER" ] || [ "$OPEN_OLD_X64" != "$OPEN_X64_HASH" ] || [ "$OPEN_OLD_ARM" != "$OPEN_ARM_HASH" ]; then
-              sed -i 's|version = ".*"|version = "'"$OPEN_NEW_VER"'"|' "$OPEN_FILE"
-              sed -i '/opencode-desktop-linux-amd64.deb";/,/hash =/ s|hash = "[^"]*"|hash = "'"$OPEN_X64_HASH"'"|' "$OPEN_FILE"
-              sed -i '/opencode-desktop-linux-arm64.deb";/,/hash =/ s|hash = "[^"]*"|hash = "'"$OPEN_ARM_HASH"'"|' "$OPEN_FILE"
+          # ---- All other packages: nix-update handles version + hash auto-detection ----
+          for f in pkgs/*.nix; do
+            name=$(basename "$f" .nix)
+            [ "$name" = "rootapp" ] && continue
+            echo ">>> nix-update $name"
+            if nix-update "$name" --flake --build=false 2>&1; then
               UPDATED=1
-              echo "Opencode Desktop: ${OPEN_OLD_VER} -> ${OPEN_NEW_VER}"
+              echo "  $name: done"
             else
-              echo "Opencode Desktop: no change (version: $OPEN_NEW_VER)"
+              echo "  WARN: $name skipped (nix-update failed)"
             fi
-          fi
+          done
 
-          # ---- Helium (GitHub release, x86_64 + arm64; hash-always check) ----
-          HE_FILE=pkgs/helium.nix
-          HE_OLD_VER=$(grep -oP 'version = "\K[^"]+' "$HE_FILE")
-          HE_OLD_X64=$(grep -A1 'x86_64_linux.tar.xz"' "$HE_FILE" | grep -oP 'hash = "\K[^"]+' | head -1)
-          HE_OLD_ARM=$(grep -A1 'arm64_linux.tar.xz"' "$HE_FILE" | grep -oP 'hash = "\K[^"]+' | head -1)
-          HE_NEW_VER=$(curl -sL https://api.github.com/repos/imputnet/helium-linux/releases/latest | jq -r .tag_name 2>/dev/null || echo "")
-          if [ -z "$HE_NEW_VER" ] || [ "$HE_NEW_VER" = "null" ]; then
-            echo "ERROR: Failed to fetch helium version"
-            FAILED=1
-          else
-            HE_X64_HASH=$(nix store prefetch-file --refresh "https://github.com/imputnet/helium-linux/releases/download/${HE_NEW_VER}/helium-${HE_NEW_VER}-x86_64_linux.tar.xz" --json 2>/dev/null | jq -r .hash 2>/dev/null || echo "")
-            HE_ARM_HASH=$(nix store prefetch-file --refresh "https://github.com/imputnet/helium-linux/releases/download/${HE_NEW_VER}/helium-${HE_NEW_VER}-arm64_linux.tar.xz" --json 2>/dev/null | jq -r .hash 2>/dev/null || echo "")
-            if [ -z "$HE_X64_HASH" ] || [ "$HE_X64_HASH" = "null" ] || [ -z "$HE_ARM_HASH" ] || [ "$HE_ARM_HASH" = "null" ]; then
-              echo "ERROR: Failed to fetch helium hashes (x64: $HE_X64_HASH, arm: $HE_ARM_HASH)"
-              FAILED=1
-            elif [ "$HE_OLD_VER" != "$HE_NEW_VER" ] || [ "$HE_OLD_X64" != "$HE_X64_HASH" ] || [ "$HE_OLD_ARM" != "$HE_ARM_HASH" ]; then
-              sed -i 's|version = ".*"|version = "'"$HE_NEW_VER"'"|' "$HE_FILE"
-              sed -i '/x86_64_linux.tar.xz";/,/hash =/ s|hash = "[^"]*"|hash = "'"$HE_X64_HASH"'"|' "$HE_FILE"
-              sed -i '/arm64_linux.tar.xz";/,/hash =/ s|hash = "[^"]*"|hash = "'"$HE_ARM_HASH"'"|' "$HE_FILE"
-              UPDATED=1
-              echo "Helium: ${HE_OLD_VER} -> ${HE_NEW_VER}"
-            else
-              echo "Helium: no change (version: $HE_NEW_VER)"
-            fi
-          fi
-
-          # ---- ProtonPlus (GitHub release, x86_64 + arm64; hash-always check) ----
-          PP_FILE=pkgs/protonplus.nix
-          PP_OLD_VER=$(grep -oP 'version = "\K[^"]+' "$PP_FILE")
-          PP_OLD_X64=$(grep -A1 'anylinux-x86_64.AppImage"' "$PP_FILE" | grep -oP 'hash = "\K[^"]+' | head -1)
-          PP_OLD_ARM=$(grep -A1 'anylinux-aarch64.AppImage"' "$PP_FILE" | grep -oP 'hash = "\K[^"]+' | head -1)
-          PP_NEW_VER=$(curl -sL https://api.github.com/repos/Vysp3r/ProtonPlus/releases/latest | jq -r .tag_name 2>/dev/null | sed 's/^v//' || echo "")
-          if [ -z "$PP_NEW_VER" ] || [ "$PP_NEW_VER" = "null" ]; then
-            echo "ERROR: Failed to fetch protonplus version"
-            FAILED=1
-          else
-            PP_X64_HASH=$(nix store prefetch-file --refresh "https://github.com/Vysp3r/ProtonPlus/releases/download/v${PP_NEW_VER}/ProtonPlus-${PP_NEW_VER}-anylinux-x86_64.AppImage" --json 2>/dev/null | jq -r .hash 2>/dev/null || echo "")
-            PP_ARM_HASH=$(nix store prefetch-file --refresh "https://github.com/Vysp3r/ProtonPlus/releases/download/v${PP_NEW_VER}/ProtonPlus-${PP_NEW_VER}-anylinux-aarch64.AppImage" --json 2>/dev/null | jq -r .hash 2>/dev/null || echo "")
-            if [ -z "$PP_X64_HASH" ] || [ "$PP_X64_HASH" = "null" ] || [ -z "$PP_ARM_HASH" ] || [ "$PP_ARM_HASH" = "null" ]; then
-              echo "ERROR: Failed to fetch protonplus hashes (x64: $PP_X64_HASH, arm: $PP_ARM_HASH)"
-              FAILED=1
-            elif [ "$PP_OLD_VER" != "$PP_NEW_VER" ] || [ "$PP_OLD_X64" != "$PP_X64_HASH" ] || [ "$PP_OLD_ARM" != "$PP_ARM_HASH" ]; then
-              sed -i 's|version = ".*"|version = "'"$PP_NEW_VER"'"|' "$PP_FILE"
-              sed -i '/anylinux-x86_64.AppImage";/,/hash =/ s|hash = "[^"]*"|hash = "'"$PP_X64_HASH"'"|' "$PP_FILE"
-              sed -i '/anylinux-aarch64.AppImage";/,/hash =/ s|hash = "[^"]*"|hash = "'"$PP_ARM_HASH"'"|' "$PP_FILE"
-              UPDATED=1
-              echo "ProtonPlus: ${PP_OLD_VER} -> ${PP_NEW_VER}"
-            else
-              echo "ProtonPlus: no change (version: $PP_NEW_VER)"
-            fi
-          fi
-
-          # ---- Zen Browser (GitHub release, x86_64 + arm64; hash-always check) ----
-          ZB_FILE=pkgs/zen-browser.nix
-          ZB_OLD_VER=$(grep -oP 'version = "\K[^"]+' "$ZB_FILE")
-          ZB_OLD_X64=$(grep -A1 'zen.linux-x86_64.tar.xz"' "$ZB_FILE" | grep -oP 'hash = "\K[^"]+' | head -1)
-          ZB_OLD_ARM=$(grep -A1 'zen.linux-aarch64.tar.xz"' "$ZB_FILE" | grep -oP 'hash = "\K[^"]+' | head -1)
-          ZB_NEW_VER=$(curl -sL https://api.github.com/repos/zen-browser/desktop/releases/latest | jq -r .tag_name 2>/dev/null || echo "")
-          if [ -z "$ZB_NEW_VER" ] || [ "$ZB_NEW_VER" = "null" ]; then
-            echo "ERROR: Failed to fetch zen-browser version"
-            FAILED=1
-          else
-            ZB_X64_HASH=$(nix store prefetch-file --refresh "https://github.com/zen-browser/desktop/releases/download/${ZB_NEW_VER}/zen.linux-x86_64.tar.xz" --json 2>/dev/null | jq -r .hash 2>/dev/null || echo "")
-            ZB_ARM_HASH=$(nix store prefetch-file --refresh "https://github.com/zen-browser/desktop/releases/download/${ZB_NEW_VER}/zen.linux-aarch64.tar.xz" --json 2>/dev/null | jq -r .hash 2>/dev/null || echo "")
-            if [ -z "$ZB_X64_HASH" ] || [ "$ZB_X64_HASH" = "null" ] || [ -z "$ZB_ARM_HASH" ] || [ "$ZB_ARM_HASH" = "null" ]; then
-              echo "ERROR: Failed to fetch zen-browser hashes (x64: $ZB_X64_HASH, arm: $ZB_ARM_HASH)"
-              FAILED=1
-            elif [ "$ZB_OLD_VER" != "$ZB_NEW_VER" ] || [ "$ZB_OLD_X64" != "$ZB_X64_HASH" ] || [ "$ZB_OLD_ARM" != "$ZB_ARM_HASH" ]; then
-              sed -i 's|version = ".*"|version = "'"$ZB_NEW_VER"'"|' "$ZB_FILE"
-              sed -i '/zen.linux-x86_64.tar.xz";/,/hash =/ s|hash = "[^"]*"|hash = "'"$ZB_X64_HASH"'"|' "$ZB_FILE"
-              sed -i '/zen.linux-aarch64.tar.xz";/,/hash =/ s|hash = "[^"]*"|hash = "'"$ZB_ARM_HASH"'"|' "$ZB_FILE"
-              UPDATED=1
-              echo "Zen Browser: ${ZB_OLD_VER} -> ${ZB_NEW_VER}"
-            else
-              echo "Zen Browser: no change (version: $ZB_NEW_VER)"
-            fi
-          fi
+          # ---- Tear-Apart Sweep (Proof-or-Stop): every pkg/artifact torn apart;
+          # exit code is the verdict - failure here aborts before any commit ----
+          python3 tools/teardown-sweep.py --overlay . --type nix --report teardown-report.md
 
           # Commit (only if something changed; exit non-zero if any package failed so the run is red)
           if [ "$UPDATED" -eq 1 ]; then
             git config user.name "opencode-agent[bot]"
             git config user.email "41898282+opencode-agent[bot]@users.noreply.github.com"
-            git add pkgs/rootapp.nix pkgs/opencode-desktop.nix pkgs/helium.nix pkgs/protonplus.nix pkgs/zen-browser.nix
+            git add -A
             git commit -m "chore: auto-update packages" || true
             git push
           fi
-          exit "$FAILED"
