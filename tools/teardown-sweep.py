@@ -1459,7 +1459,25 @@ def sweep_package(pkg, pv, srcs, live, repo_type, workdir):
             log("[%s] %s : %s signature/keyring material" % (STATUS_OK, pkg, name))
             pkg_verified = True
             continue
-        dst = dl / name
+        if any(len(it) >= 2 and it[1] == name and it[0] != url for it in srcs):
+            # two sources share one basename but differ in URL (e.g. per-arch
+            # Root.AppImage): never let them collide in distfiles/
+            dst = dl / ("%s.%s" % (name, hashlib.sha256(url.encode()).hexdigest()[:8]))
+        else:
+            dst = dl / name
+        expected_early = sha if isinstance(sha, dict) else {}
+        if sha and isinstance(sha, str):
+            expected_early = {"sha256": sha}
+        if dst.exists() and expected_early:
+            good, _ = verify_file(dst, expected_early)
+            if not good:
+                # cached bytes fail the pin (another URL's file or an upstream
+                # re-roll under a fixed URL): drop the cache, fetch fresh
+                log("  %s cached distfile fails pinned hash - re-downloading" % name)
+                try:
+                    dst.unlink()
+                except OSError:
+                    pass
         if not dst.exists():
             try:
                 log("  downloading %s (%s)" % (name, url))
