@@ -25,7 +25,7 @@ jobs:
         run: sudo -i nix upgrade-nix
 
       - name: Install nix-update
-        run: nix-env -iA nixpkgs.nix-update
+        run: nix profile install nixpkgs#nix-update
 
       - name: Update Packages
         run: |
