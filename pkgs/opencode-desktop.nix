@@ -3,16 +3,16 @@
 let
   electron = electron_42;
   pname = "opencode-desktop";
-  version = "v1.18.19";
+  version = "v1.18.20";
 
   archives = {
     x86_64-linux = pkgs.fetchurl {
       url = "https://github.com/anomalyco/opencode/releases/download/${version}/opencode-desktop-linux-amd64.deb";
-      hash = "sha256-WpSBGv97QJ2UOfrJ6r6ctIgOGTLLPA6Hujh/5yV5h08=";
+      hash = "sha256-+M4HoJbOCOqcWb6DaSWB63Q+Et7igUoqJT8N4ZKQV1Q=";
     };
     aarch64-linux = pkgs.fetchurl {
       url = "https://github.com/anomalyco/opencode/releases/download/${version}/opencode-desktop-linux-arm64.deb";
-      hash = "sha256-8J7rRv4UFghfTTZZIbbN3/tc4ncA48CtVvNKTFWkmmQ=";
+      hash = "sha256-upmanTFNq7ye1/SoPH4rGhHIBaHwS9q8pdO3/ZScfHU=";
     };
   };
 in
