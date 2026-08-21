@@ -54,6 +54,16 @@ jobs:
         run: |
           export PATH="$HOME/.opencode/bin:$PATH"
         env:
+          MODEL: opencode/mimo-v2.5-free
+          OPENCODE_CONFIG_CONTENT: '{"small_model":"opencode/mimo-v2.5-free"}'
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELAY: ${{ github.event.inputs.relay || 'false' }}
+          RUN_ID: ${{ github.run_id }}
+          GIT_AUTHOR_NAME: opencode-agent[bot]
+          GIT_AUTHOR_EMAIL: 41898282+opencode-agent[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: opencode-agent[bot]
+          GIT_COMMITTER_EMAIL: 41898282+opencode-agent[bot]@users.noreply.github.com
           PROMPT: |
             TEAR-APART SWEEP PROTOCOL (MANDATORY):
             YOU are the sweep. There is no separate script. You tear apart
