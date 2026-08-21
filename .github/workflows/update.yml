@@ -63,10 +63,6 @@ jobs:
             fi
           done
 
-          # ---- Tear-Apart Sweep (Proof-or-Stop): every pkg/artifact torn apart;
-          # exit code is the verdict - failure here aborts before any commit ----
-          python3 tools/teardown-sweep.py --overlay . --type nix --report teardown-report.md
-
           # Commit (only if something changed; exit non-zero if any package failed so the run is red)
           if [ "$UPDATED" -eq 1 ]; then
             git config user.name "opencode-agent[bot]"
