@@ -1138,6 +1138,8 @@ jobs:
       # artifact, downloaded and torn apart. Exit code is the verdict; the
       # report is the receipt.
       - name: Tear-Apart Sweep (all packages, all artifacts)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python3 tools/teardown-sweep.py --overlay . --type nix --report teardown-report.md
 
