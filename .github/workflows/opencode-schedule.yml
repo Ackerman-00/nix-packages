@@ -642,6 +642,47 @@ jobs:
                   Any package you changed but did not build-verify is an
                   unfinished package.
 
+            TEAR-APART + DEPENDENCY SWEEP (MANDATORY - "rip every package open
+            and verify EVERY shared library"). This is NOT optional. Every run
+            must tear apart EVERY binary package and verify zero missing deps:
+              a. FOR EVERY PACKAGE - DOWNLOAD AND EXTRACT THE ARTIFACT:
+                 Download the upstream artifact (AppImage, deb, rpm, tar.xz,
+                 zip) into /tmp (NEVER the repo tree). Extract it:
+                 - AppImage: ./<app>.AppImage --appimage-extract
+                 - deb: ar x <pkg>.deb && tar xf control.tar.* && tar xf data.tar.*
+                 - rpm: rpm2cpio <pkg>.rpm | cpio -idmv
+                 - tar.xz: tar xf <pkg>.tar.xz
+                 - zip: unzip <pkg>.zip
+              b. FIND ALL ELF BINARIES IN THE EXTRACTED TREE:
+                 `find /tmp/extracted -type f -exec file {} \; | grep "ELF"`
+                 Then for EACH ELF binary:
+                 `readelf -d <binary> | grep NEEDED`
+                 This lists EVERY shared library the binary requires.
+              c. VERIFY EVERY NEEDED LIBRARY EXISTS:
+                 For each NEEDED .so from readelf, check if it resolves:
+                 `ldd <binary> | grep "not found"`
+                 ZERO "not found" lines = PASS. Any "not found" = DEPS-FAIL.
+                 Also check: `patchelf --print-interpreter <binary>` must point
+                 at the nix dynamic linker, NOT /lib64/ld-linux-x86-64.so.2.
+              d. DOCKER SMOKE TEST - RUN IN CLEAN CONTAINER:
+                 Mount the nix store into a bare ubuntu:24.04 container and
+                 execute the binary:
+                 OUT=$(nix path-info .#<pkg>)
+                 docker run --rm -v /nix/store:/nix/store:ro ubuntu:24.04 \
+                    bash -lc 'ldd "$OUT/bin/<bin>" | grep "not found"; "$OUT/bin/<bin>" --version'
+                 If ldd prints "not found" OR the binary fails to run = BROKEN.
+                 The container has NOTHING preinstalled - only the package's own
+                 closure provides libs. This catches what `nix build` cannot.
+              e. REPAIR MISSING DEPS IMMEDIATELY:
+                 If ANY lib is missing: add it to runtimeDeps/buildInputs in
+                 pkgs/*.nix, verify it exists in nixpkgs (`nix eval nixpkgs#<attr>`),
+                 rebuild (`nix build .#<pkg> --no-link`), re-run the container test.
+                 A package with missing deps is BROKEN - fix it before moving on.
+              f. MANDATORY DELIVERABLE - dependency audit table for EVERY package:
+                 | package | ELF count | NEEDED libs | missing | ldd result | status |
+                 status in: deps-verified / deps-fixed / deps-broken-(lib).
+                 Any package missing from this table = run is NOT finished.
+
             RUNTIME-VERIFICATION SWEEP (MANDATORY - "run the REAL binary in a
             CLEAN container, not just nix build"). A green `nix build` only
             proves the package COMPILES inside a sandbox where the full nix
