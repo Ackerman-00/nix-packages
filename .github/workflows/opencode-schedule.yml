@@ -88,6 +88,7 @@ jobs:
           OPENCODE_CONFIG_CONTENT: '{"small_model":"opencode/mimo-v2.5-free"}'
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELAY: ${{ github.event.inputs.relay || 'false' }}
           RUN_ID: ${{ github.run_id }}
           GIT_AUTHOR_NAME: opencode-agent[bot]
@@ -145,7 +146,8 @@ jobs:
             - `flake.lock` pins `nixpkgs` — `nix flake update` bumps it; only files `git add`ed are copied into store (pure evaluation).
             - Tools: `nix` (2.4+ flakes, experimental-features `nix-command flakes`), `nixpkgs-review`, `nixfmt`, `nixpkgs-hammering`, `nixos/nix` docker.
 
-            WEB SEARCH IS YOUR PRIMARY VERIFICATION TOOL. Use `gh api` for GitHub API (NOT curl). For every package, web-search `nixpkgs <pkg>` and upstream `github.com/<owner>/<repo>/releases/latest` to confirm latest version, `url`+`hash` resolve (`curl -sI` 200, `nix-prefetch-url` or `nix hash to-sri --type sha256`), and check `repology` + `Nix User Repository` for freshness. NEVER trust a version/hash you haven't verified.
+            WEB SEARCH IS YOUR PRIMARY VERIFICATION TOOL. Use `gh api` for GitHub API (NOT curl). For every package, web-search `nixpkgs <pkg>` and upstream `github.com/<owner>/<repo>/releases/latest` to confirm latest version, `url`+`hash` resolve (`curl -sI` 200 for non-GitHub distfiles, `nix-prefetch-url` or `nix hash to-sri --type sha256`), and check `repology` + `Nix User Repository` for freshness. NEVER trust a version/hash you haven't verified.
+            - GITHUB API RATE LIMITS (2026 community best practice - docs.github.com/rest/using-the-rest-api/rate-limits-for-the-rest-api + dev.to 2026-08-19): unauthenticated = 60/hour (IP-shared, 304 still costs 1), GITHUB_TOKEN via `gh api` = 1000/hour per repo (Actions) / PAT = 5000/hour. NEVER use `curl https://api.github.com/...` without token — ALWAYS use `gh api repos/<owner>/<repo>/releases/latest --jq .tag_name` with `gh api --cache 3600s`. If you must use curl for GitHub, add `-H "Authorization: token $GITHUB_TOKEN"` — unauth 304 does NOT save quota. Prefer `gh api` and check `gh api rate_limit`.
 
             PACKAGE DEPENDENCY DEEP AUDIT (MANDATORY - "TEAR EVERY PACKAGE APART"; applies to every package, every run):
               a. OPEN THE PACKAGE. Read FULL `pkgs/<pkg>.nix` (`pname`, `version`, `archives` per system, `runtimeDeps`/`buildInputs`, `nativeBuildInputs` `patchelf`/`makeWrapper`, `rpath = lib.makeLibraryPath`, `meta`). Download `fetchurl` URL into /tmp (gitignored) and EXTRACT (`tar xf`, `ar x`+`tar xf`, `unsquashfs` for AppImage). Inspect upstream files: `Cargo.toml`, `package.json`, `meson.build`, `CMakeLists.txt`, `go.mod`, `*.so` NEEDED via `patchelf --print-rpath` / `ldd` / `readelf -d | grep NEEDED`. NEVER guess deps from memory.
@@ -178,6 +180,18 @@ jobs:
             NEVER complete a run without tearing apart every package. The sweep is NOT a separate script — YOU are the sweep.
             SWEEP SCRIPT IS CODE YOU OWN: tools/teardown-sweep.py and tools/docker-sweep.py exist as auxiliary tools you can call, but YOU do the reasoning. If they help, use them. If they break, fix them.
 
+            VERIFICATION LOOP (MANDATORY - battle-tested 2026: pre-completion checklist + external verifier, agentpatterns.ai 2026-07-19): Before declaring `status: complete`, you MUST run `bash tools/verify-nix.sh` and paste its `----- VERIFICATION REPORT -----` output. It checks numerical completion (5 rows with `deps-verified`/`deps-fixed`), evidence strings (`nix flake check` / `nix build` / `nixfmt`), and install-test + battle test table. Exit 1 = NOT COMPLETE — keep working until exit 0. Do NOT write `status: complete` if verifier fails. Prompt 70-90%, verifier+gate near-100%.
+
+
+      - name: Verify completion (external, battle-tested 2026)
+        if: always()
+        shell: bash
+        run: |
+          echo "=== External verifier: tools/verify-nix.sh ==="
+          bash tools/verify-nix.sh || {
+            echo "::error::Verification FAILED — relay missing 5-row deps table or evidence. Agent skipped mandatory audit."
+            exit 1
+          }
 
       - name: Upload opencode logs (on failure)
         if: failure()
