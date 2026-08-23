@@ -10,7 +10,7 @@ Repo type: **nix**. Sweep of **5** packages. Exit code is the verdict; this repo
 | protonplus | ProtonPlus-0.6.4-anylinux-x86_64.AppImage | 0.6.4 | 0.6.4 | **OK** | AppImage 0.6.4 (com.vysp3r.ProtonPlus.desktop) \| pinned 0.6.4 \| internal 0.6.4 |
 | protonplus | ProtonPlus-0.6.4-anylinux-aarch64.AppImage | 0.6.4 |  | **OK** | AppImage teardown error: [Errno 8] Exec format error: '/tmp/teardown-sweep/distfiles/ProtonPlus-0.6.4-anylinux-aarch64.AppImage' \| hash hash-OK \| cross-arch artifact (aarch64), hash-verified; not executable on x86_64 host |
 | rootapp | Root.AppImage | latest | 0.9.127 | **OK** | AppImage 0.9.127 (Root.desktop) \| hash hash-OK \| pinned placeholder 'latest', internal 0.9.127 authoritative \| pinned latest \| internal 0.9.127 |
-| rootapp | Root.AppImage | latest |  | **OK** | AppImage teardown error: [Errno 8] Exec format error: '/tmp/teardown-sweep/distfiles/Root_4.AppImage' \| hash hash-OK \| cross-arch artifact (aarch64), hash-verified; not executable on x86_64 host |
+| rootapp | Root.AppImage | latest |  | **OK** | AppImage teardown error: [Errno 8] Exec format error: '/tmp/teardown-sweep/distfiles/Root_2.AppImage' \| hash hash-OK \| cross-arch artifact (aarch64), hash-verified; not executable on x86_64 host |
 | zen-browser | zen.linux-x86_64.tar.xz | 1.21.15b | 1.21.15b | **OK** | tar application.ini=1.21.15b (zen/application.ini) \| pinned 1.21.15b \| internal 1.21.15b |
 | zen-browser | zen.linux-aarch64.tar.xz | 1.21.15b | 1.21.15b | **OK** | tar application.ini=1.21.15b (zen/application.ini) \| pinned 1.21.15b \| internal 1.21.15b |
 | helium | upstream github.com/imputnet/helium-linux | 0.15.6.1 | 0.15.6.1 | **OK** | at upstream latest 0.15.6.1 [releases/latest] |
