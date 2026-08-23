@@ -1,4 +1,8 @@
-{ pkgs, lib, electron_42 ? null }:
+{
+  pkgs,
+  lib,
+  electron_42 ? null,
+}:
 
 let
   electron = electron_42;
@@ -99,8 +103,17 @@ pkgs.stdenv.mkDerivation rec {
     homepage = "https://opencode.ai";
     description = "AI coding agent desktop client";
     license = lib.licenses.mit;
-    platforms = [ "x86_64-linux" "aarch64-linux" ];
+    platforms = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
     mainProgram = "opencode-desktop";
     sourceProvenance = with lib.sourceTypes; [ binaryNativeCode ];
+    maintainers = [
+      {
+        name = "Ackerman-00";
+        github = "Ackerman-00";
+      }
+    ];
   };
 }

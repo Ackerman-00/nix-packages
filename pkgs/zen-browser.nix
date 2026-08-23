@@ -16,7 +16,8 @@ let
   };
 
   src = archives.${pkgs.stdenv.hostPlatform.system};
-in pkgs.stdenv.mkDerivation {
+in
+pkgs.stdenv.mkDerivation {
   inherit pname version src;
 
   dontConfigure = true;
@@ -51,10 +52,8 @@ in pkgs.stdenv.mkDerivation {
   ];
 
   # Firefox uses "relrhack" to manually process relocations from a fixed
-  # offset, so the stock patchelf clobbers old sections; patchelfUnstable
-  # is required for --no-clobber-old-sections.
-  patchelfFlags = [ "--no-clobber-old-sections" ];
-
+  # offset, so a patchelf new enough to preserve old sections is required;
+  # autoPatchelfHook picks up the patchelfUnstable binary from PATH.
   preFixup = ''
     gappsWrapperArgs+=(
       --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath [ pkgs.ffmpeg_8 ]}"
@@ -63,43 +62,54 @@ in pkgs.stdenv.mkDerivation {
     )
   '';
 
-  desktopItems = [ (pkgs.makeDesktopItem {
-    name = "zen-browser";
-    desktopName = "Zen Browser";
-    exec = "zen-browser %u";
-    icon = "zen-browser";
-    type = "Application";
-    mimeTypes = [
-      "text/html"
-      "text/xml"
-      "application/xhtml+xml"
-      "x-scheme-handler/http"
-      "x-scheme-handler/https"
-      "application/x-xpinstall"
-      "application/pdf"
-      "application/json"
-    ];
-    startupWMClass = "zen-browser";
-    categories = [ "Network" "WebBrowser" ];
-    startupNotify = true;
-    terminal = false;
-    extraConfig.X-MultipleArgs = "false";
-    keywords = [ "Internet" "WWW" "Browser" "Web" "Explorer" ];
-    actions = {
-      new-window = {
-        name = "Open a New Window";
-        exec = "zen-browser %u";
+  desktopItems = [
+    (pkgs.makeDesktopItem {
+      name = "zen-browser";
+      desktopName = "Zen Browser";
+      exec = "zen-browser %u";
+      icon = "zen-browser";
+      type = "Application";
+      mimeTypes = [
+        "text/html"
+        "text/xml"
+        "application/xhtml+xml"
+        "x-scheme-handler/http"
+        "x-scheme-handler/https"
+        "application/x-xpinstall"
+        "application/pdf"
+        "application/json"
+      ];
+      startupWMClass = "zen-browser";
+      categories = [
+        "Network"
+        "WebBrowser"
+      ];
+      startupNotify = true;
+      terminal = false;
+      extraConfig.X-MultipleArgs = "false";
+      keywords = [
+        "Internet"
+        "WWW"
+        "Browser"
+        "Web"
+        "Explorer"
+      ];
+      actions = {
+        new-window = {
+          name = "Open a New Window";
+          exec = "zen-browser %u";
+        };
+        new-private-window = {
+          name = "Open a New Private Window";
+          exec = "zen-browser --private-window %u";
+        };
+        profile-manager = {
+          name = "Open the Profile Manager";
+          exec = "zen-browser --ProfileManager %u";
+        };
       };
-      new-private-window = {
-        name = "Open a New Private Window";
-        exec = "zen-browser --private-window %u";
-      };
-      profile-manager = {
-        name = "Open the Profile Manager";
-        exec = "zen-browser --ProfileManager %u";
-      };
-    };
-  }) ];
+    })
+  ];
 
   installPhase = ''
     runHook preInstall
@@ -126,8 +136,17 @@ in pkgs.stdenv.mkDerivation {
     downloadPage = "https://zen-browser.app/download/";
     changelog = "https://github.com/zen-browser/desktop/releases";
     license = lib.licenses.mpl20;
-    platforms = [ "x86_64-linux" "aarch64-linux" ];
+    platforms = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
     mainProgram = "zen-browser";
     sourceProvenance = with lib.sourceTypes; [ binaryNativeCode ];
+    maintainers = [
+      {
+        name = "Ackerman-00";
+        github = "Ackerman-00";
+      }
+    ];
   };
 }

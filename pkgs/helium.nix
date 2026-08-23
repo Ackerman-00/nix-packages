@@ -158,9 +158,18 @@ pkgs.stdenv.mkDerivation {
   meta = {
     homepage = "https://github.com/imputnet/helium-linux";
     description = "Private, fast, and honest web browser based on Chromium";
-    license = with lib.licenses; [ gpl3Plus bsd3 ];
+    license = with lib.licenses; [
+      gpl3Plus
+      bsd3
+    ];
     sourceProvenance = with lib.sourceTypes; [ binaryNativeCode ];
     platforms = lib.platforms.linux;
     mainProgram = "helium";
+    maintainers = [
+      {
+        name = "Ackerman-00";
+        github = "Ackerman-00";
+      }
+    ];
   };
 }

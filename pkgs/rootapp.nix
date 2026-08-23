@@ -16,8 +16,9 @@ let
   };
 
   src = archives.${pkgs.stdenv.hostPlatform.system};
-  appimageContents = pkgs.appimageTools.extractType2 { inherit pname version src; };
-in pkgs.appimageTools.wrapType2 {
+  appimageContents = pkgs.appimageTools.extract { inherit pname version src; };
+in
+pkgs.appimageTools.wrapType2 {
   inherit pname version src;
   extraInstallCommands = ''
     install -m 444 -D ${appimageContents}/Root.png $out/share/icons/hicolor/256x256/apps/rootapp.png
@@ -39,5 +40,11 @@ in pkgs.appimageTools.wrapType2 {
     platforms = lib.platforms.linux;
     mainProgram = "rootapp";
     sourceProvenance = with lib.sourceTypes; [ binaryNativeCode ];
+    maintainers = [
+      {
+        name = "Ackerman-00";
+        github = "Ackerman-00";
+      }
+    ];
   };
 }
