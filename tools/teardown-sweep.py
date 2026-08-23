@@ -2277,12 +2277,23 @@ def check_vulns_and_deps(pkgs, repo_type):
             upstream = info.get("upstream_version", "?")
             status = info.get("status", "?")
             if status == "outdated" and upstream:
-                total_outdated += 1
-                tool = AUTO_UPDATE_TOOLS.get(repo_type, "manual")
-                log("[OUTDATED] %s: pinned %s, upstream %s -> use %s"
-                    % (pkg, clean_pv, upstream, tool))
-                rows.append((pkg, pkg, clean_pv, upstream, "OUTDATED",
-                             "upstream %s available, use %s" % (upstream, tool)))
+                # False-positive defense: Repology sometimes flags a project
+                # "outdated" even when its newest upstream version equals the
+                # version we verified inside the artifact (version-scheme
+                # normalization quirks, stale repology cache). Trust our own
+                # teardown: if pinned == upstream by our own comparison, the
+                # package is NOT outdated.
+                if versions_match(clean_pv, staleness_pv(upstream)):
+                    log("[INFO] %s@%s: repology says outdated but pinned == "
+                        "upstream %s (repology normalization artifact)"
+                        % (pkg, clean_pv, upstream))
+                else:
+                    total_outdated += 1
+                    tool = AUTO_UPDATE_TOOLS.get(repo_type, "manual")
+                    log("[OUTDATED] %s: pinned %s, upstream %s -> use %s"
+                        % (pkg, clean_pv, upstream, tool))
+                    rows.append((pkg, pkg, clean_pv, upstream, "OUTDATED",
+                                 "upstream %s available, use %s" % (upstream, tool)))
             elif status == "newest":
                 total_fresh += 1
                 log("[FRESH] %s@%s" % (pkg, clean_pv))

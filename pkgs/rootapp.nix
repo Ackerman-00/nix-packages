@@ -2,7 +2,7 @@
 
 let
   pname = "rootapp";
-  version = "latest";
+  version = "0.9.127";
 
   archives = {
     x86_64-linux = pkgs.fetchurl {
