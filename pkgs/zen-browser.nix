@@ -132,7 +132,7 @@ pkgs.stdenv.mkDerivation {
 
   meta = {
     homepage = "https://zen-browser.app";
-    description = "Beautifully designed, privacy-focused, and packed with features - a Firefox fork with vertical tabs, workspaces and split view";
+    description = "Beautifully designed privacy-focused Firefox fork with vertical tabs and workspaces";
     downloadPage = "https://zen-browser.app/download/";
     changelog = "https://github.com/zen-browser/desktop/releases";
     license = lib.licenses.mpl20;
