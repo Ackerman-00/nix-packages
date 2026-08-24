@@ -33,6 +33,7 @@
           zen-browser = pkgs.callPackage ./pkgs/zen-browser.nix { inherit lib; };
           opencode-desktop = pkgs.callPackage ./pkgs/opencode-desktop.nix { inherit lib; };
           rootapp = pkgs.callPackage ./pkgs/rootapp.nix { inherit lib; };
+          mixtapes = pkgs.callPackage ./pkgs/mixtapes.nix { inherit lib; };
         in
         {
           helium = helium;
@@ -40,6 +41,7 @@
           zen-browser = zen-browser;
           opencode-desktop = opencode-desktop;
           rootapp = rootapp;
+          mixtapes = mixtapes;
         }
         // lib.optionalAttrs (system == "x86_64-linux") {
           default = self.packages.${system}.rootapp;
