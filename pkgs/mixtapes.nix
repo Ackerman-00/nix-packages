@@ -84,7 +84,19 @@ pkgs.stdenv.mkDerivation {
       cp -r assets/icons/hicolor $out/share/icons/
     fi
 
+    # yt-dlp resolves ffmpeg and a JS runtime ("js_runtimes": {"node": {}})
+    # from PATH: FFmpegExtractAudio backs every download format, node drives
+    # yt-dlp-ejs YouTube challenges.
     makeWrapper ${pythonEnv}/bin/python $out/bin/mixtapes \
+      --prefix PATH : ${
+        lib.makeBinPath (
+          with pkgs;
+          [
+            ffmpeg
+            nodejs
+          ]
+        )
+      } \
       --add-flags "$out/share/mixtapes/src/main.py"
 
     runHook postInstall
@@ -129,6 +141,7 @@ pkgs.stdenv.mkDerivation {
       and is pinned to the latest metainfo release.
     '';
     license = lib.licenses.gpl3Plus;
+    sourceProvenance = with lib.sourceTypes; [ fromSource ];
     platforms = lib.platforms.linux;
     mainProgram = "mixtapes";
     maintainers = [
