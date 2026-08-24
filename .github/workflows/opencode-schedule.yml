@@ -190,6 +190,7 @@ jobs:
 
             VERIFICATION LOOP (MANDATORY - battle-tested 2026: pre-completion checklist + external verifier, agentpatterns.ai 2026-07-19): Before declaring `status: complete`, you MUST run `bash tools/verify-nix.sh` and paste its `----- VERIFICATION REPORT -----` output. It checks numerical completion (5 rows with `deps-verified`/`deps-fixed`), evidence strings (`nix flake check` / `nix build` / `nixfmt`), and install-test + battle test table. Exit 1 = NOT COMPLETE -- keep working until exit 0. Do NOT write `status: complete` if verifier fails. Prompt 70-90%, verifier+gate near-100%.
 
+            CLOSE THE FAILURE ISSUE WHEN FIXED (MANDATORY): After `tools/verify-nix.sh` passes and you have committed `status: complete` with `run_id: $RUN_ID` to `.opencode-relay.md` on `main`, you MUST close any open issue titled `autonomous run failed:*` — it is the record of the previous failure you just fixed. Run `gh api repos/${GITHUB_REPOSITORY}/issues?state=open --jq '.[] | select(.title | startswith("autonomous run failed")) | .number'` to find it, then for each number run `gh issue close <n> --reason completed --comment "Fixed by $RUN_ID ($GITHUB_SHA): verification passed (sweep + docker 5/5 + flake check + nixfmt) and relay is now status: complete. See https://github.com/${GITHUB_REPOSITORY}/actions/runs/$GITHUB_RUN_ID."` . Every fix gets a closing comment with evidence; never leave a fixed failure issue open.
 
       - name: Verify completion (external, battle-tested 2026)
         if: always()
@@ -235,6 +236,18 @@ jobs:
           else
             echo "failure issue for today already open - skipping"
           fi
+
+      - name: Close failure issue on success
+        if: needs.opencode.result == 'success'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for n in $(gh api "repos/${GITHUB_REPOSITORY}/issues?state=open&per_page=100" --jq '.[] | select(.title | startswith("autonomous run failed")) | .number'); do
+            echo "Closing failure issue #$n (run $GITHUB_RUN_ID succeeded, verification passed)"
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/$n" -f state=closed -f state_reason=completed >/dev/null
+            gh api "repos/${GITHUB_REPOSITORY}/issues/$n/comments" -f body="Closed automatically: the next scheduled run (\`$GITHUB_RUN_ID\`) passed verification (\`tools/verify-nix.sh\` exit 0, relay \`run_id: $GITHUB_RUN_ID\` + \`status: complete\`). See https://github.com/${GITHUB_REPOSITORY}/actions/runs/$GITHUB_RUN_ID." >/dev/null || true
+          done
 
       - name: Clean up stray opencode/schedule branches
         shell: bash
