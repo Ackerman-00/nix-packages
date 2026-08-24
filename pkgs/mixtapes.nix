@@ -45,6 +45,10 @@ pkgs.stdenv.mkDerivation {
     libadwaita
     webkitgtk_6_0
     gobject-introspection
+    # TLS for GIO/GTK (soup backend): without glib-networking the login
+    # WebView and any GLib-based HTTPS fail with "TLS support is not available"
+    glib-networking
+    glib
     gst_all_1.gstreamer
     gst_all_1.gst-plugins-base
     gst_all_1.gst-plugins-good
@@ -119,6 +123,11 @@ pkgs.stdenv.mkDerivation {
           ]
         )
       }"
+      # GIO TLS: point GLib at the glib-networking module dir (giomodule) and
+      # the CA bundle so the login WebView / ytmusicapi HTTPS works.
+      --set GIO_MODULE_DIR "${pkgs.glib-networking}/lib/gio/modules"
+      --prefix GIO_EXTRA_MODULES : "${pkgs.glib-networking}/lib/gio/modules"
+      --set NIX_SSL_CERT_FILE "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
     )
   '';
 
