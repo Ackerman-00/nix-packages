@@ -2,7 +2,7 @@ name: Packages Auto-Update
 
 on:
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 */6 * * *'   # Every 6 hours (opencode-schedule follows 10 min later at :10)
   workflow_dispatch:
 
 jobs:
