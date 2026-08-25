@@ -1,0 +1,75 @@
+diff --git a/.github/workflows/update.yml b/.github/workflows/update.yml
+index 7c98997..4847347 100644
+--- a/.github/workflows/update.yml
++++ b/.github/workflows/update.yml
+@@ -122,6 +122,70 @@ jobs:
+             fi
+           done
+ 
++          # ---- Multi-arch hash safety net ----
++          # nix-update only rewrites the hash of the src it evaluates; in an
++          # archives.${system} attrset the other architecture keeps its STALE
++          # hash after a version bump (shipped broken builds twice: helium
++          # 0.15.7.1, opencode-desktop 1.18.23). Re-prefetch EVERY url/hash
++          # pair in every package and fix any hash that no longer matches.
++          HASHFIXES=$(python3 - <<'PYEOF'
++          import json, pathlib, re, subprocess
++
++          for path in sorted(pathlib.Path("pkgs").glob("*.nix")):
++              text = path.read_text()
++              pm = re.search(r'pname = "([^"]+)"', text)
++              vm = re.search(r'^\s*version = "([^"]+)"', text, re.M)
++              subs = {}
++              if pm: subs["${pname}"] = pm.group(1)
++              if vm: subs["${version}"] = vm.group(1)
++              lines = text.splitlines(keepends=True)
++              i = 0
++              changed = False
++              while i < len(lines):
++                  um = re.search(r'url\s*=\s*"([^"]+)"', lines[i])
++                  if not um:
++                      i += 1
++                      continue
++                  raw_url = um.group(1)
++                  j = i + 1
++                  hm = None
++                  while j < len(lines) and j <= i + 4:
++                      hm = re.search(r'hash\s*=\s*"([^"]+)"', lines[j])
++                      if hm:
++                          break
++                      j += 1
++                  if not hm or "${" in raw_url.replace("${version}", "").replace("${pname}", ""):
++                      i += 1
++                      continue
++                  url = raw_url
++                  for k, v in subs.items():
++                      url = url.replace(k, v)
++                  r = subprocess.run(
++                      ["nix", "store", "prefetch-file", "--refresh", url, "--json"],
++                      capture_output=True, text=True,
++                  )
++                  if r.returncode != 0:
++                      print(f"WARN prefetch failed: {url}", flush=True)
++                      i += 1
++                      continue
++                  new_hash = json.loads(r.stdout)["hash"]
++                  old_hash = hm.group(1)
++                  if new_hash != old_hash:
++                      lines[j] = lines[j].replace(f'hash = "{old_hash}"', f'hash = "{new_hash}"')
++                      changed = True
++                      print(f"HASHFIXED {path}: {url}", flush=True)
++                      print(f"  {old_hash} -> {new_hash}", flush=True)
++                  i = j + 1
++              if changed:
++                  path.write_text("".join(lines))
++          PYEOF
++          )
++          echo "$HASHFIXES"
++          if echo "$HASHFIXES" | grep -q '^HASHFIXED'; then
++            UPDATED=1
++            echo "::warning::stale multi-arch hash(es) repaired - see log above"
++          fi
++
+           # Commit (only if something changed; exit non-zero if any package failed so the run is red)
+           if [ "$UPDATED" -eq 1 ]; then
+             git config user.name "opencode-agent[bot]"
