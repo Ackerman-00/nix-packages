@@ -7,12 +7,12 @@
 let
   electron = electron_42;
   pname = "opencode-desktop";
-  version = "1.18.22";
+  version = "1.18.23";
 
   archives = {
     x86_64-linux = pkgs.fetchurl {
       url = "https://github.com/anomalyco/opencode/releases/download/v${version}/opencode-desktop-linux-amd64.deb";
-      hash = "sha256-naq2cbos1ONhvkubLINenk0hnjf7vMqkVWmkAqgxwKM=";
+      hash = "sha256-T7B5VtRrEbAoCAPvrmngUP6bwz1yVBwwzxoaP9qrzEY=";
     };
     aarch64-linux = pkgs.fetchurl {
       url = "https://github.com/anomalyco/opencode/releases/download/v${version}/opencode-desktop-linux-arm64.deb";
