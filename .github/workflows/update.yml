@@ -35,8 +35,8 @@ jobs:
           # ---- RootApp: refresh hash only (no version in URL to detect) ----
           ROOT_X64_URL="https://installer.rootapp.com/installer/Linux/X64/Root.AppImage"
           ROOT_ARM_URL="https://installer.rootapp.com/installer/Linux/Arm64/Root.AppImage"
-          ROOT_X64_OLD=$(grep -A1 'X64/Root.AppImage' pkgs/rootapp.nix | grep -oP 'hash = "\K[^"]+')
-          ROOT_ARM_OLD=$(grep -A1 'Arm64/Root.AppImage' pkgs/rootapp.nix | grep -oP 'hash = "\K[^"]+')
+          ROOT_X64_OLD=$(grep -A1 'X64/Root.AppImage' pkgs/rootapp.nix | grep -oP 'hash = "\K[^"]+' || true)
+          ROOT_ARM_OLD=$(grep -A1 'Arm64/Root.AppImage' pkgs/rootapp.nix | grep -oP 'hash = "\K[^"]+' || true)
           ROOT_X64_NEW=$(nix store prefetch-file --refresh "$ROOT_X64_URL" --json 2>/dev/null | jq -r .hash || echo "")
           ROOT_ARM_NEW=$(nix store prefetch-file --refresh "$ROOT_ARM_URL" --json 2>/dev/null | jq -r .hash || echo "")
           if [ -n "$ROOT_X64_NEW" ] && [ "$ROOT_X64_NEW" != "null" ] && [ "$ROOT_X64_OLD" != "$ROOT_X64_NEW" ]; then
@@ -59,9 +59,9 @@ jobs:
           git_mode_update() {
             local f="pkgs/$1.nix"
             local O R REV HEAD SHORT GITDATE CURVER NEWHASH BASE NV
-            O=$(grep -oP 'owner = "\K[^"]+' "$f" | head -1)
-            R=$(grep -oP 'repo = "\K[^"]+' "$f" | head -1)
-            REV=$(grep -oP 'rev = "\K[0-9a-f]{40}' "$f" | head -1)
+            O=$(grep -oP 'owner = "\K[^"]+' "$f" | head -1 || true)
+            R=$(grep -oP 'repo = "\K[^"]+' "$f" | head -1 || true)
+            REV=$(grep -oP 'rev = "\K[0-9a-f]{40}' "$f" | head -1 || true)
             [ -n "$O" ] && [ -n "$R" ] && [ -n "$REV" ] || { echo "  $1: not a fetchFromGitHub rev-pinned pkg; skip"; return 0; }
             HEAD=$(git ls-remote "https://github.com/$O/$R.git" HEAD 2>/dev/null | awk '{print $1}')
             [ -n "$HEAD" ] || { echo "  WARN: $1 ls-remote failed"; return 0; }
@@ -75,7 +75,7 @@ jobs:
               | python3 -c "import sys,json; print(json.load(sys.stdin).get('commit',{}).get('committer',{}).get('date',''))" 2>/dev/null \
               | tr -d '\-TZ:')
             [ -n "$GITDATE" ] || GITDATE=$(date -u +%Y%m%d%H%M%S)
-            CURVER=$(grep -oP '^\s*version = "\K[^"]+' "$f" | head -1)
+            CURVER=$(grep -oP '^\s*version = "\K[^"]+' "$f" | head -1 || true)
             BASE=${CURVER%%^*}
             NV="${BASE}^${GITDATE}git${SHORT}"
             NEWHASH=$(nix flake prefetch --json "github:$O/$R/$HEAD" 2>/dev/null | jq -r .hash)
@@ -99,8 +99,8 @@ jobs:
             # nix-update against them only produces a VersionError traceback
             # (releases.atom carries no entries). GitHub releases always
             # create a tag, so "no refs/tags/" == nothing for nix-update.
-            O=$(grep -oP 'owner = "\K[^"]+' "$f" | head -1)
-            R=$(grep -oP 'repo = "\K[^"]+' "$f" | head -1)
+            O=$(grep -oP 'owner = "\K[^"]+' "$f" | head -1 || true)
+            R=$(grep -oP 'repo = "\K[^"]+' "$f" | head -1 || true)
             if [ -n "$O" ] && [ -n "$R" ] \
                && grep -qP 'rev = "[0-9a-f]{40}"' "$f" \
                && ! git ls-remote --tags "https://github.com/$O/$R.git" 2>/dev/null | grep -q 'refs/tags/'; then
