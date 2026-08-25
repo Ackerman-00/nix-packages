@@ -94,6 +94,21 @@ jobs:
             name=$(basename "$f" .nix)
             # rootapp handled above (raw URL, no version to detect)
             [ "$name" = "rootapp" ] && continue
+
+            # Pre-route tagless upstreams STRAIGHT to -git mode: running
+            # nix-update against them only produces a VersionError traceback
+            # (releases.atom carries no entries). GitHub releases always
+            # create a tag, so "no refs/tags/" == nothing for nix-update.
+            O=$(grep -oP 'owner = "\K[^"]+' "$f" | head -1)
+            R=$(grep -oP 'repo = "\K[^"]+' "$f" | head -1)
+            if [ -n "$O" ] && [ -n "$R" ] \
+               && grep -qP 'rev = "[0-9a-f]{40}"' "$f" \
+               && ! git ls-remote --tags "https://github.com/$O/$R.git" 2>/dev/null | grep -q 'refs/tags/'; then
+              echo ">>> $name (tagless upstream -> -git mode)"
+              git_mode_update "$name"
+              continue
+            fi
+
             echo ">>> nix-update $name"
             # NOTE: --build is a boolean flag in nix-update; '--build=false'
             # errors with "ignored explicit argument 'false'". Default already
