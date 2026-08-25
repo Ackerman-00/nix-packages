@@ -2642,23 +2642,30 @@ def main():
     log("%-34s %-34s %-16s %-14s %-12s %s" % ("PACKAGE", "DISTFILE", "PINNED", "INTERNAL", "STATUS", "NOTE"))
     bad_statuses = (STATUS_FAIL, STATUS_MISMATCH, STATUS_STALE, STATUS_UNVERIFIED)
     good_statuses = (STATUS_OK, STATUS_SOURCE_OK, STATUS_SKIP)
-    # Count bad per-PACKAGE, not per-artifact. A package with multiple
-    # artifacts (e.g. .deb + .tar.zst) is verified if ANY artifact is OK.
-    pkg_worst = {}  # pkg -> worst status seen
+    # Count bad per-PACKAGE, not per-artifact.
+    # - HARD failures (FAIL/MISMATCH/STALE) on ANY artifact are never
+    #   overridden: every pinned fetchurl hash must verify or the flake is
+    #   broken for that system (e.g. one stale arch hash among two).
+    # - SOFT UNVERIFIED rows (inner archives like .deb's data.tar.* that carry
+    #   no version evidence of their own) ARE overridden when another artifact
+    #   of the same package verifies the version.
+    hard_statuses = (STATUS_FAIL, STATUS_MISMATCH, STATUS_STALE)
+    pkg_worst = {}  # pkg -> verdict ("HARD"/"SOFT"/"GOOD")
     for pkg, dist, pinned, internal, status, note in rows:
         log("%-34s %-34s %-16s %-14s %-12s %s" % (
             pkg, (dist or "")[:34], (pinned or "")[:16], (internal or "")[:14], status, note))
         if pkg in ("LIBYEAR",):
             continue
-        prev = pkg_worst.get(pkg)
-        if status in bad_statuses:
-            # Only mark bad if no good status has been seen for this package yet
-            if prev not in good_statuses:
-                pkg_worst[pkg] = status
+        prev = pkg_worst.get(pkg, "GOOD")
+        if status in hard_statuses:
+            pkg_worst[pkg] = "HARD"
+        elif status == STATUS_UNVERIFIED:
+            if prev == "GOOD":
+                pkg_worst[pkg] = "SOFT"
         elif status in good_statuses:
-            # Any good status overrides previous bad for this package
-            pkg_worst[pkg] = status
-    n_bad = sum(1 for s in pkg_worst.values() if s in bad_statuses)
+            if prev != "HARD":
+                pkg_worst[pkg] = "GOOD"
+    n_bad = sum(1 for s in pkg_worst.values() if s in ("HARD", "SOFT"))
 
     report = Path(args.report)
     lines = ["# Teardown Sweep Report", "",
