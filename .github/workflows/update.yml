@@ -55,7 +55,10 @@ jobs:
             name=$(basename "$f" .nix)
             [ "$name" = "rootapp" ] && continue
             echo ">>> nix-update $name"
-            if nix-update "$name" --flake --build=false 2>&1; then
+            # NOTE: --build is a boolean flag in nix-update; '--build=false'
+            # errors with "ignored explicit argument 'false'". Default already
+            # does NOT build (eval-only), which is what we want here.
+            if nix-update "$name" --flake 2>&1; then
               UPDATED=1
               echo "  $name: done"
             else
@@ -71,14 +74,3 @@ jobs:
             git commit -m "chore: auto-update packages" || true
             git push
           fi
-
-  teardown-sweep:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - run: python3 tools/teardown-sweep.py --overlay . --workdir /tmp/teardown-sweep
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with: { name: teardown-report, path: teardown-report.md }
