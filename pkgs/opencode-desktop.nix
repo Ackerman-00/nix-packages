@@ -16,7 +16,7 @@ let
     };
     aarch64-linux = pkgs.fetchurl {
       url = "https://github.com/anomalyco/opencode/releases/download/v${version}/opencode-desktop-linux-arm64.deb";
-      hash = "sha256-zBtN2VjI1zGBfTJiR2XJUSP/gvSqRX+bF8n0Nh+t+2k=";
+      hash = "sha256-dzAdtB1QaOAR6V8OAWnTX2U/U39+yoHmQintNpS0+xc=";
     };
   };
 in
