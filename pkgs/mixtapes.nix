@@ -2,10 +2,9 @@
 
 let
   pname = "mixtapes";
-  # Latest upstream release from com.pocoguy.Muse.metainfo.xml at rev 5e165d2
-  # (metainfo <release version="2026-26-05.0">). HEAD is newer but no new
-  # metainfo release tag yet; pinned to that commit's tarball.
-  version = "2026-26-05.0";
+  # -git scheme: base (metainfo release at this rev) ^ gitdate git shortrev.
+  # update.yml's git_mode_update tracks HEAD and rewrites rev/hash/version.
+  version = "2026-26-05.0^20260815212453git5e165d2";
 
   src = pkgs.fetchFromGitHub {
     owner = "m-obeid";

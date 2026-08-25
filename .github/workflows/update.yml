@@ -50,9 +50,49 @@ jobs:
             echo "rootapp: aarch64 hash refreshed"
           fi
 
-          # ---- All other packages: nix-update handles version + hash auto-detection ----
+          # ---- All other packages ----
+          # Primary: nix-update (handles tags/releases across GitHub/GitLab/
+          # codeberg/pypi/...). Fallback: generic -git mode for ANY package
+          # dropped into pkgs/ whose upstream has no tags/releases -> track
+          # main HEAD as base-version^gitdategitshortcommit (fetchFromGitHub
+          # files with rev = <40-hex>), bumping rev + hash + version together.
+          git_mode_update() {
+            local f="pkgs/$1.nix"
+            local O R REV HEAD SHORT GITDATE CURVER NEWHASH BASE NV
+            O=$(grep -oP 'owner = "\K[^"]+' "$f" | head -1)
+            R=$(grep -oP 'repo = "\K[^"]+' "$f" | head -1)
+            REV=$(grep -oP 'rev = "\K[0-9a-f]{40}' "$f" | head -1)
+            [ -n "$O" ] && [ -n "$R" ] && [ -n "$REV" ] || { echo "  $1: not a fetchFromGitHub rev-pinned pkg; skip"; return 0; }
+            HEAD=$(git ls-remote "https://github.com/$O/$R.git" HEAD 2>/dev/null | awk '{print $1}')
+            [ -n "$HEAD" ] || { echo "  WARN: $1 ls-remote failed"; return 0; }
+            if [ "$HEAD" = "$REV" ]; then
+              echo "  $1: already at HEAD (${HEAD:0:7})"
+              return 0
+            fi
+            SHORT=${HEAD:0:7}
+            GITDATE=$(curl -sL ${GITHUB_TOKEN:+-H "Authorization: token $GITHUB_TOKEN"} \
+              "https://api.github.com/repos/$O/$R/commits/$HEAD" \
+              | python3 -c "import sys,json; print(json.load(sys.stdin).get('commit',{}).get('committer',{}).get('date',''))" 2>/dev/null \
+              | tr -d '\-TZ:')
+            [ -n "$GITDATE" ] || GITDATE=$(date -u +%Y%m%d%H%M%S)
+            CURVER=$(grep -oP '^\s*version = "\K[^"]+' "$f" | head -1)
+            BASE=${CURVER%%^*}
+            NV="${BASE}^${GITDATE}git${SHORT}"
+            NEWHASH=$(nix flake prefetch --json "github:$O/$R/$HEAD" 2>/dev/null | jq -r .hash)
+            if [ -z "$NEWHASH" ] || [ "$NEWHASH" = "null" ]; then
+              echo "  WARN: $1 skipped (prefetch failed)"
+              return 0
+            fi
+            sed -i "/rev = /s|$REV|$HEAD|" "$f"
+            sed -i "0,/hash = \"sha256-/s|hash = \"[^\"]*\"|hash = \"$NEWHASH\"|" "$f"
+            sed -i -E "s|^([[:space:]]*)version = \"[^\"]*\"|\1version = \"$NV\"|" "$f"
+            UPDATED=1
+            echo "  $1: ${REV:0:7} -> $SHORT ($NV)"
+          }
+
           for f in pkgs/*.nix; do
             name=$(basename "$f" .nix)
+            # rootapp handled above (raw URL, no version to detect)
             [ "$name" = "rootapp" ] && continue
             echo ">>> nix-update $name"
             # NOTE: --build is a boolean flag in nix-update; '--build=false'
@@ -62,7 +102,8 @@ jobs:
               UPDATED=1
               echo "  $name: done"
             else
-              echo "  WARN: $name skipped (nix-update failed)"
+              echo "  nix-update failed for $name -> trying -git mode"
+              git_mode_update "$name"
             fi
           done
 
