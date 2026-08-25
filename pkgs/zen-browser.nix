@@ -56,7 +56,20 @@ pkgs.stdenv.mkDerivation {
   # autoPatchelfHook picks up the patchelfUnstable binary from PATH.
   preFixup = ''
     gappsWrapperArgs+=(
-      --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath [ pkgs.ffmpeg_8 ]}"
+      # ffmpeg: liblgpllibs dlopens libavcodec for h264/hevc.
+      # pulseaudio: cubeb dlopens libpulse.so.0 at runtime (AUR:
+      # "pulse-native-provider: Audio support") - without it every site is
+      # silent on NixOS (no raw ALSA device exists; audio goes through
+      # pipewire-pulse, which speaks the pulse protocol to libpulse clients).
+      # pipewire: WebRTC screen-share audio capture (libpipewire-0.3).
+      --prefix LD_LIBRARY_PATH : "${
+        lib.makeLibraryPath [
+          pkgs.ffmpeg_8
+          pkgs.pulseaudio
+          pkgs.pipewire
+          pkgs.alsa-lib
+        ]
+      }"
       --add-flags "--name=''${MOZ_APP_LAUNCHER:-zen-browser}"
       --add-flags "--class=''${MOZ_APP_LAUNCHER:-zen-browser}"
     )
