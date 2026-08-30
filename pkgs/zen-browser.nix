@@ -2,16 +2,16 @@
 
 let
   pname = "zen-browser";
-  version = "1.21.15b";
+  version = "1.21.16b";
 
   archives = {
     x86_64-linux = pkgs.fetchurl {
       url = "https://github.com/zen-browser/desktop/releases/download/${version}/zen.linux-x86_64.tar.xz";
-      hash = "sha256-Lq6mZLhABnygrOYjvU9FSPrpj0apji3b39y5JTtnS78=";
+      hash = "sha256-Hkw8OR0QqCI501r62EZY+js4Vrj/cvk7v/f1c5KsuUI=";
     };
     aarch64-linux = pkgs.fetchurl {
       url = "https://github.com/zen-browser/desktop/releases/download/${version}/zen.linux-aarch64.tar.xz";
-      hash = "sha256-c6YJuVTn3O+NxJse/JwTtojs+iS6Gz85rWU+kyS4ic8=";
+      hash = "sha256-eqDCUcHa1svqN0s9WJLUwZSEZUeSMsMYrviaoc8YNlQ=";
     };
   };
 
