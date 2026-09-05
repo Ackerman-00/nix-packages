@@ -12,12 +12,12 @@ Repo type: **nix**. Sweep of **6** packages. Exit code is the verdict; this repo
 | protonplus | ProtonPlus-0.6.6-anylinux-aarch64.AppImage | 0.6.6 |  | **OK** | AppImage teardown error: [Errno 8] Exec format error: '/tmp/opencode/sweep-verify/distfiles/ProtonPlus-0.6.6-anylinux-aarch64.AppImage' \| hash hash-OK \| cross-arch artifact (aarch64), hash-verified; not executable on x86_64 host |
 | rootapp | Root.AppImage | 0.9.129 | 0.9.129 | **OK** | AppImage 0.9.129 (Root.desktop) \| pinned 0.9.129 \| internal 0.9.129 |
 | rootapp | Root.AppImage | 0.9.129 |  | **OK** | AppImage teardown error: [Errno 8] Exec format error: '/tmp/opencode/sweep-verify/distfiles/Root_2.AppImage' \| hash hash-OK \| cross-arch artifact (aarch64), hash-verified; not executable on x86_64 host |
-| zen-browser | zen.linux-x86_64.tar.xz | 1.21.16b | 1.21.16b | **OK** | tar application.ini=1.21.16b (zen/application.ini) \| pinned 1.21.16b \| internal 1.21.16b |
-| zen-browser | zen.linux-aarch64.tar.xz | 1.21.16b | 1.21.16b | **OK** | tar application.ini=1.21.16b (zen/application.ini) \| pinned 1.21.16b \| internal 1.21.16b |
+| zen-browser | zen.linux-x86_64.tar.xz | 1.22b | 1.22b | **OK** | tar application.ini=1.22b (zen/application.ini) \| pinned 1.22b \| internal 1.22b |
+| zen-browser | zen.linux-aarch64.tar.xz | 1.22b | 1.22b | **OK** | tar application.ini=1.22b (zen/application.ini) \| pinned 1.22b \| internal 1.22b |
 | helium | upstream github.com/imputnet/helium-linux | 0.16.5.1 | 0.16.5.1 | **OK** | at upstream latest 0.16.5.1 [releases/latest] |
 | opencode-desktop | upstream github.com/anomalyco/opencode | 1.18.29 | v1.18.29 | **OK** | at upstream latest v1.18.29 [releases/latest] |
 | protonplus | upstream github.com/Vysp3r/ProtonPlus | 0.6.6 | v0.6.6 | **OK** | at upstream latest v0.6.6 [releases/latest] |
-| zen-browser | upstream github.com/zen-browser/desktop | 1.21.16b | 1.21.16b | **OK** | at upstream latest 1.21.16b [releases/latest] |
+| zen-browser | upstream github.com/zen-browser/desktop | 1.22b | 1.22b | **OK** | at upstream latest 1.22b [releases/latest] |
 | LIBYEAR | freshness | 0.00 yr | 0 pkgs | **METRIC** | threshold=20 libyears |
 
 **Verdict: PASS** (0 failure(s))
