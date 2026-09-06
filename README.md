@@ -6,6 +6,7 @@
 * `protonplus` — Modern Wine/Proton compatibility tools manager (AppImage, x86_64 + aarch64)
 * `zen-browser` — Beautifully designed, privacy-focused Firefox fork (tar.xz, x86_64 + aarch64)
 * `mixtapes` — Modern, Linux-first YouTube Music player built with GTK4 and Libadwaita (source, x86_64 + aarch64)
+* `splayer-next` — Cross-platform desktop music player with rich lyric support (tar.gz, x86_64 + aarch64)
 
 ---
 

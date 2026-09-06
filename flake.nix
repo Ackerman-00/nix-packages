@@ -34,6 +34,7 @@
           opencode-desktop = pkgs.callPackage ./pkgs/opencode-desktop.nix { inherit lib; };
           rootapp = pkgs.callPackage ./pkgs/rootapp.nix { inherit lib; };
           mixtapes = pkgs.callPackage ./pkgs/mixtapes.nix { inherit lib; };
+          splayer-next = pkgs.callPackage ./pkgs/splayer-next.nix { inherit lib; };
         in
         {
           helium = helium;
@@ -42,6 +43,7 @@
           opencode-desktop = opencode-desktop;
           rootapp = rootapp;
           mixtapes = mixtapes;
+          splayer-next = splayer-next;
         }
         // lib.optionalAttrs (system == "x86_64-linux") {
           default = self.packages.${system}.rootapp;
