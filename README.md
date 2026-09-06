@@ -50,6 +50,7 @@ Pass the inputs to your system configuration and add the desired applications to
             inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.protonplus
             inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.zen-browser
             inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.mixtapes
+            inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.splayer-next
           ];
         })
       ];
@@ -67,4 +68,5 @@ nix run github:Ackerman-00/nix-packages#helium
 nix run github:Ackerman-00/nix-packages#protonplus
 nix run github:Ackerman-00/nix-packages#zen-browser
 nix run github:Ackerman-00/nix-packages#mixtapes
+nix run github:Ackerman-00/nix-packages#splayer-next
 ```

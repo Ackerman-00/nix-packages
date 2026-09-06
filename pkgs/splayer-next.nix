@@ -68,6 +68,7 @@ pkgs.stdenv.mkDerivation {
     patchelf
     makeWrapper
     copyDesktopItems
+    python3
     # Use shell wrapper so gappsWrapperArgs can evaluate ${NIXOS_OZONE_WL}
     (wrapGAppsHook3.override { makeWrapper = makeShellWrapper; })
   ];
@@ -135,7 +136,51 @@ pkgs.stdenv.mkDerivation {
   doInstallCheck = true;
 
   installCheckPhase = ''
-    $out/bin/splayer-next --version
+    runHook preInstallCheck
+
+    # SPlayer-Next is an Electron app with no --version handler: launching
+    # it boots the full main process (needs HOME + display and crashes
+    # otherwise), so verify the install wiring instead of executing it.
+    # 1. Bundled app.asar version matches the pinned version.
+    ${pkgs.python3}/bin/python3 - <<EOF
+    import json
+    data = open("$out/opt/splayer-next/resources/app.asar", "rb").read()
+    header_size = int.from_bytes(data[4:8], "little")
+    payload_start = 8 + header_size
+    start = data.find(b"{", 8)
+    header = json.JSONDecoder().raw_decode(data[start:].decode(errors="ignore"))[0]
+    def walk(node, prefix=""):
+        for name, info in node.items():
+            q = prefix + "/" + name
+            if isinstance(info, dict) and info.get("files"):
+                yield from walk(info["files"], q)
+            elif isinstance(info, dict) and name == "package.json" and "node_modules" not in q:
+                off, size = int(info["offset"]), int(info["size"])
+                yield json.loads(data[payload_start + off:payload_start + off + size].decode(errors="ignore"))["version"]
+    ver = next(walk(header["files"]))
+    assert ver == "${version}", "asar version " + ver + " != ${version}"
+    print("asar version " + ver + " OK")
+    EOF
+
+    # 2. Every NEEDED lib of the bundled binaries resolves via the wrapper
+    # rpath (+ app dir for bundled libffmpeg) -- proves runtimeDeps coverage.
+    for bin in $out/opt/splayer-next/SPlayer-Next \
+               $out/opt/splayer-next/chrome_crashpad_handler \
+               $out/opt/splayer-next/resources/native/*.node \
+               $out/opt/splayer-next/resources/app.asar.unpacked/node_modules/better-sqlite3/prebuilds/*.node; do
+      missing="$(LD_LIBRARY_PATH=${rpath}:$out/opt/splayer-next ldd "$bin" | grep "not found" || true)"
+      if [ -n "$missing" ]; then
+        echo "missing libs for $bin:"
+        echo "$missing"
+        exit 1
+      fi
+    done
+    echo "ldd: all NEEDED libs resolve"
+
+    test -f $out/opt/splayer-next/resources/app.asar
+    test -x $out/bin/splayer-next
+
+    runHook postInstallCheck
   '';
 
   meta = {
