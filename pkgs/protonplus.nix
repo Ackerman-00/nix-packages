@@ -2,16 +2,16 @@
 
 let
   pname = "protonplus";
-  version = "0.6.7";
+  version = "0.6.8";
 
   archives = {
     x86_64-linux = pkgs.fetchurl {
       url = "https://github.com/Vysp3r/ProtonPlus/releases/download/v${version}/ProtonPlus-${version}-anylinux-x86_64.AppImage";
-      hash = "sha256-+0JxtkJNNAFUZ29eXy3Xfe2hAOyslxOikznjManoM/w=";
+      hash = "sha256-6xSHcj8uAIkWFwkQAyPdsC9Rc7Y5V/lhUX7UutY3qHE=";
     };
     aarch64-linux = pkgs.fetchurl {
       url = "https://github.com/Vysp3r/ProtonPlus/releases/download/v${version}/ProtonPlus-${version}-anylinux-aarch64.AppImage";
-      hash = "sha256-tcK7TOc+hT5dPxNaycmNmsV/VqPGws2CVBc1Myehg3U=";
+      hash = "sha256-CftS/wJpC/BLbS5S2ZG10UKOGflJbHdk3C/1cdHq+M8=";
     };
   };
 
