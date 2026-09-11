@@ -4,13 +4,13 @@ let
   pname = "mixtapes";
   # -git scheme: base (metainfo release at this rev) ^ gitdate git shortrev.
   # update.yml's git_mode_update tracks HEAD and rewrites rev/hash/version.
-  version = "2026-26-05.0^20260908202839gitf68ffef";
+  version = "2026-26-05.0^20260911180740gitcdf48a1";
 
   src = pkgs.fetchFromGitHub {
     owner = "m-obeid";
     repo = "Mixtapes";
-    rev = "f68ffef8733b349f5bd6b6925e2c24bee9cddfb9";
-    hash = "sha256-D4I+BLyO/NIldwK4baMLXxi39Y8Kbw7vUlhlzN+eI9k=";
+    rev = "cdf48a120a7449a8f7295082b2c8fe12c3b57c42";
+    hash = "sha256-cEm5mdo9PQWvApYqrqufrAnnDaTDMHssMdoaQJUX7Rw=";
   };
 
   pythonEnv = pkgs.python314.withPackages (
