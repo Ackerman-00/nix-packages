@@ -7,11 +7,11 @@ let
   archives = {
     x86_64-linux = pkgs.fetchurl {
       url = "https://installer.rootapp.com/installer/Linux/X64/Root.AppImage";
-      hash = "sha256-Uf7IBoiMMgZYFi6PmETEhhOtmrK+Zir0J/0X3F4sQsA=";
+      hash = "sha256-HaMUPmonHSKx71uN4Bm6ujkBPmfV/rTIKSydEpSjxtA=";
     };
     aarch64-linux = pkgs.fetchurl {
       url = "https://installer.rootapp.com/installer/Linux/Arm64/Root.AppImage";
-      hash = "sha256-7IhP/+IlvKoufrP2F2ZERXbWkJAJNl4KnvuyCLrp1Yo=";
+      hash = "sha256-bu/6DsuVeawmoRj/FLKG1l/Z/ZngQVmjh4FpeEtQR2U=";
     };
   };
 
