@@ -5,13 +5,13 @@ Repo type: **nix**. Sweep of **7** packages. Exit code is the verdict; this repo
 |---|---|---|---|---|---|
 | helium | helium-0.17.0.1-x86_64_linux.tar.xz | 0.17.0.1 | 0.17.0.1 | **OK** | tar runtime probe chrome --version: Helium 0.17.0.1 (Chromium 153.0.8010.36) \| pinned 0.17.0.1 \| internal 0.17.0.1 |
 | helium | helium-0.17.0.1-arm64_linux.tar.xz | 0.17.0.1 |  | **SOURCE-OK** | tar extracted, no version evidence found \| hash hash-OK \| source tarball (version = PV by construction) |
-| mixtapes | live m-obeid/Mixtapes | cdf48a120a74 | cdf48a120a74 | **OK** | live m-obeid/Mixtapes pin cdf48a120a74 vs upstream cdf48a120a74 |
+| mixtapes | live m-obeid/Mixtapes | 00f47077627b | 00f47077627b | **OK** | live m-obeid/Mixtapes pin 00f47077627b vs upstream 00f47077627b |
 | opencode-desktop | opencode-desktop-linux-amd64.deb | 1.18.30 | 1.18.30 | **OK** | deb pkg=opencode (control control.tar.xz) \| pinned 1.18.30 \| internal 1.18.30 |
 | opencode-desktop | opencode-desktop-linux-arm64.deb | 1.18.30 | 1.18.30 | **OK** | deb pkg=opencode (control control.tar.xz) \| pinned 1.18.30 \| internal 1.18.30 |
 | protonplus | ProtonPlus-0.6.8-anylinux-x86_64.AppImage | 0.6.8 | 0.6.8 | **OK** | AppImage 0.6.8 (com.vysp3r.ProtonPlus.desktop) \| pinned 0.6.8 \| internal 0.6.8 |
-| protonplus | ProtonPlus-0.6.8-anylinux-aarch64.AppImage | 0.6.8 |  | **OK** | AppImage teardown error: [Errno 8] Exec format error: '/tmp/opencode/sweep-34689081628/distfiles/ProtonPlus-0.6.8-anylinux-aarch64.AppImage' \| hash hash-OK \| cross-arch artifact (aarch64), hash-verified; not executable on x86_64 host |
+| protonplus | ProtonPlus-0.6.8-anylinux-aarch64.AppImage | 0.6.8 |  | **OK** | AppImage teardown error: [Errno 8] Exec format error: '/tmp/opencode/sweep-34702334593/distfiles/ProtonPlus-0.6.8-anylinux-aarch64.AppImage' \| hash hash-OK \| cross-arch artifact (aarch64), hash-verified; not executable on x86_64 host |
 | rootapp | Root.AppImage | 0.9.130 | 0.9.130 | **OK** | AppImage 0.9.130 (Root.desktop) \| pinned 0.9.130 \| internal 0.9.130 |
-| rootapp | Root.AppImage | 0.9.130 |  | **OK** | AppImage teardown error: [Errno 8] Exec format error: '/tmp/opencode/sweep-34689081628/distfiles/Root_2.AppImage' \| hash hash-OK \| cross-arch artifact (aarch64), hash-verified; not executable on x86_64 host |
+| rootapp | Root.AppImage | 0.9.130 |  | **OK** | AppImage teardown error: [Errno 8] Exec format error: '/tmp/opencode/sweep-34702334593/distfiles/Root_2.AppImage' \| hash hash-OK \| cross-arch artifact (aarch64), hash-verified; not executable on x86_64 host |
 | splayer-next | splayer-next-1.1.0-x64.tar.gz | 1.1.0 | 1.1.0 | **OK** | tar asar=1.1.0 (splayer-next-1.1.0-x64/resources/app.asar) \| pinned 1.1.0 \| internal 1.1.0 |
 | splayer-next | splayer-next-1.1.0-arm64.tar.gz | 1.1.0 | 1.1.0 | **OK** | tar asar=1.1.0 (splayer-next-1.1.0-arm64/resources/app.asar) \| pinned 1.1.0 \| internal 1.1.0 |
 | zen-browser | zen.linux-x86_64.tar.xz | 1.22b | 1.22b | **OK** | tar application.ini=1.22b (zen/application.ini) \| pinned 1.22b \| internal 1.22b |
