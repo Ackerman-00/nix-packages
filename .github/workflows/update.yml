@@ -141,6 +141,7 @@ jobs:
               lines = text.splitlines(keepends=True)
               i = 0
               changed = False
+              failed = False
               while i < len(lines):
                   um = re.search(r'url\s*=\s*"([^"]+)"', lines[i])
                   if not um:
@@ -166,6 +167,7 @@ jobs:
                   )
                   if r.returncode != 0:
                       print(f"WARN prefetch failed: {url}", flush=True)
+                      failed = True
                       i += 1
                       continue
                   new_hash = json.loads(r.stdout)["hash"]
@@ -178,12 +180,33 @@ jobs:
                   i = j + 1
               if changed:
                   path.write_text("".join(lines))
+              if failed:
+                  # URLs that do not resolve (e.g. nix-update bumped to a
+                  # tag with no release assets yet) ship a broken build.
+                  print(f"URLFAIL {path}", flush=True)
           PYEOF
           )
           echo "$HASHFIXES"
           if echo "$HASHFIXES" | grep -q '^HASHFIXED'; then
             UPDATED=1
             echo "::warning::stale multi-arch hash(es) repaired - see log above"
+          fi
+          # Revert guard: a version bump whose distfile URLs do not resolve
+          # (nix-update tracking a tag with no release assets yet, e.g.
+          # opencode-desktop 2.0.0) is always a broken build. Revert bumped
+          # files to their last-good pin instead of committing 404 URLs.
+          URLFAIL_PKGS=$(echo "$HASHFIXES" | grep '^URLFAIL' | awk '{print $2}' || true)
+          if [ -n "$URLFAIL_PKGS" ]; then
+            for f in $URLFAIL_PKGS; do
+              if git diff --name-only | grep -qx "$f"; then
+                echo "::warning::unresolvable URLs after bump - reverting $f to last-good pin"
+                git checkout -- "$f"
+              else
+                echo "::warning::prefetch failed for unmodified $f (transient? leaving as-is)"
+              fi
+            done
+            # If every bump was reverted there is nothing left to commit.
+            git diff --quiet && UPDATED=0 || true
           fi
 
           # Commit (only if something changed; exit non-zero if any package failed so the run is red)
