@@ -7,7 +7,7 @@
 let
   electron = electron_42;
   pname = "opencode-desktop";
-  version = "1.18.30";
+  version = "2.0.3";
 
   archives = {
     x86_64-linux = pkgs.fetchurl {
