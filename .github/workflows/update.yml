@@ -27,6 +27,9 @@ jobs:
       - name: Install nix-update
         run: nix profile install nixpkgs#nix-update
 
+      - name: Magic Nix Cache (CI speed, free)
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
       - name: Update Packages
         run: |
           set -euo pipefail
@@ -183,6 +186,21 @@ jobs:
               continue
             fi
 
+            # Fast-path: for GitHub-releases packages, compare the atom feed
+            # top tag against the pinned version BEFORE paying for a full
+            # flake eval inside nix-update. Equality means nix-update would
+            # no-op ("already X") - skip it. Anything else falls through to
+            # nix-update (the authority). Never skip on fetch failure.
+            if [ -n "$O" ] && [ -n "$R" ]; then
+              CURV=$(grep -oP '^\s*version = "\K[^"]+' "$f" | head -1 || true)
+              ATOMTAG=$(curl -sL --max-time 20 "https://github.com/$O/$R/releases.atom" 2>/dev/null | grep -oP '<title>\Kv[^<]*|(?<=<title>)[^<]*' | head -2 | tail -1 | tr -d ' \t\n\r' || true)
+              ATOMVER=${ATOMTAG#v}
+              if [ -n "$CURV" ] && [ -n "$ATOMVER" ] && [ "$CURV" = "$ATOMVER" ]; then
+                echo ">>> $name ($CURV == atom $ATOMTAG, skipping nix-update eval)"
+                continue
+              fi
+            fi
+
             echo ">>> nix-update $name"
             # NOTE: --build is a boolean flag in nix-update; '--build=false'
             # errors with "ignored explicit argument 'false'". Default already
@@ -294,11 +312,24 @@ jobs:
           NEEDS=$(echo "$NEEDS" | xargs)
           if [ -n "$NEEDS" ]; then
             echo "dispatching relay: $NEEDS"
-            gh workflow run "nixcache.yml" \
-              --ref "${GITHUB_REF_NAME}" \
-              --repo "${{ github.repository }}" \
-              -f packages="$NEEDS" \
-              -f force_rebuild="false"
+            # Dispatch endpoint throws transient 5xx (GitHub-side, seen
+            # 2026-05/09). Retry with backoff; if all fail, warn LOUDLY but
+            # don't red the updater (the update itself succeeded - next cycle
+            # re-discovers the gap and retries the dispatch).
+            ok=0
+            for i in 1 2 3 4; do
+              if gh workflow run "nixcache.yml" \
+                --ref "${GITHUB_REF_NAME}" \
+                --repo "${{ github.repository }}" \
+                -f packages="$NEEDS" \
+                -f force_rebuild="false"; then
+                ok=1
+                break
+              fi
+              echo "::warning::dispatch attempt $i/4 failed - backing off"
+              sleep $((30 * i))
+            done
+            [ "$ok" -eq 1 ] || echo "::warning::relay dispatch failed after 4 tries - binaries stay missing until next cycle re-dispatches"
           else
             echo "all binaries published, no relay needed."
           fi

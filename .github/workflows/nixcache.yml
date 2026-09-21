@@ -28,8 +28,16 @@ permissions:
   actions: write
 
 concurrency:
+  # Single shared group with a real FIFO queue (GitHub changelog 2026-05-07:
+  # `queue: max` holds up to 100 pending runs and processes them sequentially
+  # instead of canceling the queued run). This replaces BOTH the old shared
+  # group (which ate pending relay runs: "higher priority waiting request")
+  # AND per-queue groups (complex, still racy on the manifest). Every trigger
+  # - push, schedule, relay - simply queues and executes in order. Publish
+  # stays idempotent + GC time-guarded as defense in depth.
   group: nixcache
   cancel-in-progress: false
+  queue: max
 
 jobs:
   build-sign-publish:
@@ -108,8 +116,16 @@ jobs:
         run: |
           set -euo pipefail
           echo ">>> building ${{ env.TARGET_PKG }}"
-          OUT=$(nix build ".#packages.x86_64-linux.${{ env.TARGET_PKG }}" --print-out-paths)
-          echo "TARGET_OUT=$OUT" >> "$GITHUB_ENV"
+          # NOTE: packages may have MULTIPLE outputs (out + man/doc). The full
+          # path list travels via a GITHUB_ENV heredoc (plain echo corrupts
+          # multiline values and fails the step). Downstream steps iterate lines.
+          nix build ".#packages.x86_64-linux.${{ env.TARGET_PKG }}" --print-out-paths > /tmp/outpaths.txt
+          cat /tmp/outpaths.txt
+          {
+            echo "TARGET_OUTS<<EOF"
+            cat /tmp/outpaths.txt
+            echo "EOF"
+          } >> "$GITHUB_ENV"
 
       - name: Sign closure (or warn-only without key)
         env:
@@ -123,8 +139,11 @@ jobs:
           fi
           printf '%s' "$NIX_SIGNING_KEY" > /tmp/cache-priv.pem
           chmod 600 /tmp/cache-priv.pem
-          nix store sign --recursive --key-file /tmp/cache-priv.pem "$TARGET_OUT" \
-            || nix-store --sign-paths -k /tmp/cache-priv.pem "$TARGET_OUT"
+          # TARGET_OUTS is multiline (one output path per line) - unquoted
+          # expansion word-splits correctly; quoting would pass one broken arg.
+          # shellcheck disable=SC2086
+          nix store sign --recursive --key-file /tmp/cache-priv.pem $TARGET_OUTS \
+            || nix-store --sign-paths -k /tmp/cache-priv.pem $TARGET_OUTS
           echo "PUBLISH=true" >> "$GITHUB_ENV"
           rm -f /tmp/cache-priv.pem
 
@@ -133,7 +152,8 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf nixcache-stage && mkdir -p nixcache-stage
-          nix path-info -r --json --json-format 1 "$TARGET_OUT" \
+          # shellcheck disable=SC2086
+          nix path-info -r --json --json-format 1 $TARGET_OUTS \
             | jq -r 'keys[]' > /tmp/closure.txt
           echo "closure paths: $(wc -l < /tmp/closure.txt)"
           : > /tmp/wanted.txt
@@ -208,14 +228,19 @@ jobs:
           done < manifest-new.txt
           retry_upload "manifest.txt"
           echo ">>> GC: purging assets outside the union manifest"
-          while read -r asset; do
+          # Time guard: only delete assets that predate THIS run. A concurrent
+          # run's fresh uploads are never deleted even if absent from our
+          # union snapshot (its manifest merge covers them on its own pass).
+          RUN_START=$(date -u +%FT%TZ -d "@$(( $(date +%s) - 600 ))" 2>/dev/null || date -u -v-10M +%FT%TZ)
+          gh release view nixcache -R "$REPO" --json assets \
+            --jq '.assets[] | "\(.name) \(.createdAt)"' 2>/dev/null | while read -r asset created; do
             [ -z "$asset" ] && continue
             [ "$asset" = "manifest.txt" ] && continue
-            if ! grep -qFx "$asset" manifest.txt; then
-              echo "  deleting: $asset"
+            if ! grep -qFx "$asset" manifest.txt && [[ "$created" < "$RUN_START" ]]; then
+              echo "  deleting stale: $asset ($created)"
               gh release delete-asset nixcache "$asset" --repo "$REPO" -y 2>/dev/null || true
             fi
-          done <<< "$existing"
+          done
 
       - name: Relay to next package in queue
         if: always()
@@ -226,11 +251,19 @@ jobs:
           REMAINING="${PKGS[@]:1}"
           if [ -n "$REMAINING" ]; then
             echo "relaying to: $REMAINING (this package done or failed, queue continues)"
-            gh workflow run "nixcache.yml" \
-              --ref "${GITHUB_REF_NAME}" \
-              --repo "${{ github.repository }}" \
-              -f packages="$REMAINING" \
-              -f force_rebuild="${{ github.event.inputs.force_rebuild || 'false' }}"
+            # Same transient-5xx discipline as the dispatch head.
+            for i in 1 2 3 4; do
+              if gh workflow run "nixcache.yml" \
+                --ref "${GITHUB_REF_NAME}" \
+                --repo "${{ github.repository }}" \
+                -f packages="$REMAINING" \
+                -f force_rebuild="${{ github.event.inputs.force_rebuild || 'false' }}"; then
+                break
+              fi
+              echo "::warning::relay attempt $i/4 failed - backing off"
+              sleep $((30 * i))
+              [ "$i" -eq 4 ] && echo "::warning::relay to [$REMAINING] failed - next scheduled nixcache run picks up the remainder"
+            done
           else
             echo "queue finished."
           fi
