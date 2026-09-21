@@ -50,7 +50,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
     owner = "niri-wm";
     repo = "niri";
     rev = "8be4c6df68ddef2afd4ccdde7f27dbc782c30603";
-    hash = lib.fakeHash;
+    hash = "sha256-z2NJYe1zfVoFQKbkowMtBEr+m8al8oT3JVimA9N9Xow=";
   };
 
   outputs = [

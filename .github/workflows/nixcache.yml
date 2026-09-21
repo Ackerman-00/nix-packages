@@ -41,6 +41,56 @@ jobs:
       - name: Magic Nix Cache (CI speed, free)
         uses: DeterminateSystems/magic-nix-cache-action@main
 
+      - name: Resolve placeholder hashes (self-heal, void pattern)
+        run: |
+          set -euo pipefail
+          # nixcache must NEVER fail on unresolved hashes: if update.yml has
+          # not filled a rev's hashes yet (fakeHash), resolve them right here
+          # with nix (same commands as update.yml rust_rev_update), else skip.
+          for pkg in niri-unstable xwayland-satellite-unstable; do
+            f="pkgs/$pkg.nix"
+            if ! grep -q "fakeHash" "$f"; then
+              echo ">>> $pkg hashes resolved, building"
+              continue
+            fi
+            echo ">>> $pkg has placeholder hashes - resolving in place"
+            O=$(grep -oP 'owner = "\K[^"]+' "$f" | head -1)
+            R=$(grep -oP 'repo = "\K[^"]+' "$f" | head -1)
+            REV=$(grep -oP 'rev = "\K[0-9a-f]{40}' "$f" | head -1)
+            OUT=$(nix eval --impure --json --expr "builtins.fetchGit { url = \"https://github.com/$O/$R\"; rev = \"$REV\"; }" 2>/dev/null | jq -r .outPath || true)
+            if [ -n "$OUT" ]; then
+              SRCHASH=$(nix path-info --json --json-format 1 "$OUT" 2>/dev/null | jq -r '.[].narHash' || true)
+              if [ -n "$SRCHASH" ] && [ "$SRCHASH" != "null" ]; then
+                python3 - "$f" "$SRCHASH" <<'PYEOF'
+          import re, sys
+          path, srchash = sys.argv[1], sys.argv[2]
+          text = open(path).read()
+          text = re.sub(r'hash = "(?:lib\.fakeHash|sha256-[^"]*)"',
+                        f'hash = "{srchash}"', text, count=1)
+          open(path, "w").write(text)
+          print("  src hash resolved")
+          PYEOF
+              fi
+            fi
+            sed -i 's|cargoHash = "sha256-[^"]*"|cargoHash = ""|; s|cargoHash = lib.fakeHash|cargoHash = ""|' "$f"
+            GOT=$(nix build ".#packages.x86_64-linux.$pkg" --print-out-paths 2>&1 | grep -oP 'got:\s*\Ksha256-[A-Za-z0-9+/=]+' | head -1 || true)
+            if [ -z "$GOT" ]; then
+              echo "::warning::$pkg hash self-heal failed - leaving for update.yml"
+              git checkout -- "$f"
+            else
+              sed -i "s|cargoHash = \"\"|cargoHash = \"$GOT\"|" "$f"
+              echo ">>> $pkg cargoHash resolved: ${GOT:0:20}..."
+            fi
+          done
+          if ! git diff --quiet -- pkgs/; then
+            git config user.name "opencode-agent[bot]"
+            git config user.email "41898282+opencode-agent[bot]@users.noreply.github.com"
+            git add pkgs/niri-unstable.nix pkgs/xwayland-satellite-unstable.nix
+            git commit -m "chore: resolve rev-pinned hashes (nixcache self-heal)" || true
+            git pull --rebase origin main 2>/dev/null || true
+            git push origin main || echo "::warning::hash-commit push failed, build continues in-worktree"
+          fi
+
       - name: Build pinned source packages
         run: |
           set -euo pipefail
