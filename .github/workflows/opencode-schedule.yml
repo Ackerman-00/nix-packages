@@ -265,6 +265,7 @@ jobs:
                  - SMOKE (nixos/nix container, headless-safe): `niri --help` exit 0 + `xwayland-satellite --help` exit 0. Full compositor launch is impossible headless and is NOT required; build exit 0 + wrapper proof + help smokes ARE.
                  - BUILDABLE is proven ONLY by this run's `nix build` exit 0 on the CURRENT rev. Never "it built last run", never "upstream CI is green". If HEAD moved and the build fails: revert per update.yml, open/refresh the issue with the log lines, keep last-good pin + last-good binaries serving users.
                  - nixcache.yml publishes ONLY green builds (it fires on push; a reverted bump pushes nothing, so nothing stale ever publishes).
+                 - RELAY CHAIN (2026-09-22): update.yml dispatches the nixcache build relay head after bumping; each nixcache run builds exactly ONE package then relays the rest (`-f packages="..."`), so a timeout can only ever kill a single package's build. Never "optimize" this into one big matrix build.
               h. 2026 AUTOMATED EXCELLENCE CHECKS (MANDATORY - August 2026 Nix):
                  For EVERY nix you touched (and at least a 3-sample of the full inventory - derive the count via `ls pkgs/*.nix`, NEVER hardcode the number), run and paste output:
                  - `nix flake check` -- must be clean (pure evaluation, no `builtins.currentSystem`, `with import <nixpkgs>` banned; `config = {}; overlays = [];`)

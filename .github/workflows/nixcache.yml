@@ -17,9 +17,15 @@ on:
         required: false
         default: 'false'
         type: boolean
+      packages:
+        description: 'Space-separated build queue; this run builds the head then relays the tail'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: nixcache
@@ -41,27 +47,37 @@ jobs:
       - name: Magic Nix Cache (CI speed, free)
         uses: DeterminateSystems/magic-nix-cache-action@main
 
-      - name: Resolve placeholder hashes (self-heal, void pattern)
+      - name: Parse package queue (one package per run, relay the rest)
+        run: |
+          PKGS="${{ github.event.inputs.packages }}"
+          [ -z "$PKGS" ] && PKGS="niri-unstable xwayland-satellite-unstable"
+          # shellcheck disable=SC2206
+          ARR=($PKGS)
+          echo "TARGET_PKG=${ARR[0]}" >> "$GITHUB_ENV"
+          echo "PACKAGE_LIST=$PKGS" >> "$GITHUB_ENV"
+          echo "queue: $PKGS -> this run builds: ${ARR[0]}"
+
+      - name: Resolve placeholder hashes (self-heal)
         run: |
           set -euo pipefail
-          # nixcache must NEVER fail on unresolved hashes: if update.yml has
-          # not filled a rev's hashes yet (fakeHash), resolve them right here
-          # with nix (same commands as update.yml rust_rev_update), else skip.
-          for pkg in niri-unstable xwayland-satellite-unstable; do
-            f="pkgs/$pkg.nix"
-            if ! grep -q "fakeHash" "$f"; then
-              echo ">>> $pkg hashes resolved, building"
-              continue
-            fi
-            echo ">>> $pkg has placeholder hashes - resolving in place"
-            O=$(grep -oP 'owner = "\K[^"]+' "$f" | head -1)
-            R=$(grep -oP 'repo = "\K[^"]+' "$f" | head -1)
-            REV=$(grep -oP 'rev = "\K[0-9a-f]{40}' "$f" | head -1)
-            OUT=$(nix eval --impure --json --expr "builtins.fetchGit { url = \"https://github.com/$O/$R\"; rev = \"$REV\"; }" 2>/dev/null | jq -r .outPath || true)
-            if [ -n "$OUT" ]; then
-              SRCHASH=$(nix path-info --json --json-format 1 "$OUT" 2>/dev/null | jq -r '.[].narHash' || true)
-              if [ -n "$SRCHASH" ] && [ "$SRCHASH" != "null" ]; then
-                python3 - "$f" "$SRCHASH" <<'PYEOF'
+          # A run must NEVER die on unresolved hashes: if update.yml has not
+          # filled this rev's hashes yet (fakeHash), resolve them right here
+          # with nix (same procedure as update.yml rust_rev_update).
+          pkg="${{ env.TARGET_PKG }}"
+          f="pkgs/$pkg.nix"
+          if ! grep -q "fakeHash" "$f"; then
+            echo ">>> $pkg hashes resolved, building"
+            exit 0
+          fi
+          echo ">>> $pkg has placeholder hashes - resolving in place"
+          O=$(grep -oP 'owner = "\K[^"]+' "$f" | head -1)
+          R=$(grep -oP 'repo = "\K[^"]+' "$f" | head -1)
+          REV=$(grep -oP 'rev = "\K[0-9a-f]{40}' "$f" | head -1)
+          OUT=$(nix eval --impure --json --expr "builtins.fetchGit { url = \"https://github.com/$O/$R\"; rev = \"$REV\"; }" 2>/dev/null | jq -r .outPath || true)
+          if [ -n "$OUT" ]; then
+            SRCHASH=$(nix path-info --json --json-format 1 "$OUT" 2>/dev/null | jq -r '.[].narHash' || true)
+            if [ -n "$SRCHASH" ] && [ "$SRCHASH" != "null" ]; then
+              python3 - "$f" "$SRCHASH" <<'PYEOF'
           import re, sys
           path, srchash = sys.argv[1], sys.argv[2]
           text = open(path).read()
@@ -70,38 +86,30 @@ jobs:
           open(path, "w").write(text)
           print("  src hash resolved")
           PYEOF
-              fi
             fi
-            sed -i 's|cargoHash = "sha256-[^"]*"|cargoHash = ""|; s|cargoHash = lib.fakeHash|cargoHash = ""|' "$f"
-            GOT=$(nix build ".#packages.x86_64-linux.$pkg" --print-out-paths 2>&1 | grep -oP 'got:\s*\Ksha256-[A-Za-z0-9+/=]+' | head -1 || true)
-            if [ -z "$GOT" ]; then
-              echo "::warning::$pkg hash self-heal failed - leaving for update.yml"
-              git checkout -- "$f"
-            else
-              sed -i "s|cargoHash = \"\"|cargoHash = \"$GOT\"|" "$f"
-              echo ">>> $pkg cargoHash resolved: ${GOT:0:20}..."
-            fi
-          done
-          if ! git diff --quiet -- pkgs/; then
-            git config user.name "opencode-agent[bot]"
-            git config user.email "41898282+opencode-agent[bot]@users.noreply.github.com"
-            git add pkgs/niri-unstable.nix pkgs/xwayland-satellite-unstable.nix
-            git commit -m "chore: resolve rev-pinned hashes (nixcache self-heal)" || true
-            git pull --rebase origin main 2>/dev/null || true
-            git push origin main || echo "::warning::hash-commit push failed, build continues in-worktree"
           fi
+          sed -i 's|cargoHash = "sha256-[^"]*"|cargoHash = ""|; s|cargoHash = lib.fakeHash|cargoHash = ""|' "$f"
+          GOT=$(nix build ".#packages.x86_64-linux.$pkg" --print-out-paths 2>&1 | grep -oP 'got:\s*\Ksha256-[A-Za-z0-9+/=]+' | head -1 || true)
+          if [ -z "$GOT" ]; then
+            echo "::error::$pkg hash self-heal failed - update.yml will retry next cycle"
+            git checkout -- "$f"
+            exit 1
+          fi
+          sed -i "s|cargoHash = \"\"|cargoHash = \"$GOT\"|" "$f"
+          echo ">>> $pkg cargoHash resolved: ${GOT:0:20}..."
+          git config user.name "opencode-agent[bot]"
+          git config user.email "41898282+opencode-agent[bot]@users.noreply.github.com"
+          git add "$f"
+          git commit -m "chore: resolve $pkg rev-pinned hashes (nixcache self-heal)" || true
+          git pull --rebase origin main 2>/dev/null || true
+          git push origin main || echo "::warning::hash-commit push failed, build continues in-worktree"
 
-      - name: Build pinned source packages
+      - name: Build target package
         run: |
           set -euo pipefail
-          for pkg in niri-unstable xwayland-satellite-unstable; do
-            echo ">>> building $pkg"
-            nix build ".#packages.x86_64-linux.$pkg" --print-out-paths
-          done
-          NIRI_OUT=$(nix build ".#packages.x86_64-linux.niri-unstable" --print-out-paths --no-link 2>/dev/null || nix path-info ".#packages.x86_64-linux.niri-unstable")
-          XWS_OUT=$(nix build ".#packages.x86_64-linux.xwayland-satellite-unstable" --print-out-paths --no-link 2>/dev/null || nix path-info ".#packages.x86_64-linux.xwayland-satellite-unstable")
-          echo "NIRI_OUT=$NIRI_OUT" >> "$GITHUB_ENV"
-          echo "XWS_OUT=$XWS_OUT" >> "$GITHUB_ENV"
+          echo ">>> building ${{ env.TARGET_PKG }}"
+          OUT=$(nix build ".#packages.x86_64-linux.${{ env.TARGET_PKG }}" --print-out-paths)
+          echo "TARGET_OUT=$OUT" >> "$GITHUB_ENV"
 
       - name: Sign closure (or warn-only without key)
         env:
@@ -109,16 +117,14 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${NIX_SIGNING_KEY:-}" ]; then
-            echo "::warning::NIX_SIGNING_KEY secret missing - build verified but publish will be SKIPPED. Owner: generate with 'nix-store --generate-binary-cache-key nixcache ./cache-priv.pem ./nixcache.pub', commit nixcache.pub, store private half as NIX_SIGNING_KEY."
+            echo "::warning::NIX_SIGNING_KEY secret missing - build verified but publish will be SKIPPED. Owner: 'nix-store --generate-binary-cache-key nixcache ./cache-priv.pem ./nixcache.pub', commit nixcache.pub, store private half as NIX_SIGNING_KEY."
             echo "PUBLISH=false" >> "$GITHUB_ENV"
             exit 0
           fi
           printf '%s' "$NIX_SIGNING_KEY" > /tmp/cache-priv.pem
           chmod 600 /tmp/cache-priv.pem
-          for out in "$NIRI_OUT" "$XWS_OUT"; do
-            nix store sign --recursive --key-file /tmp/cache-priv.pem "$out" \
-              || nix-store --sign-paths -k /tmp/cache-priv.pem "$out"
-          done
+          nix store sign --recursive --key-file /tmp/cache-priv.pem "$TARGET_OUT" \
+            || nix-store --sign-paths -k /tmp/cache-priv.pem "$TARGET_OUT"
           echo "PUBLISH=true" >> "$GITHUB_ENV"
           rm -f /tmp/cache-priv.pem
 
@@ -127,7 +133,7 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf nixcache-stage && mkdir -p nixcache-stage
-          nix path-info -r --json --json-format 1 "$NIRI_OUT" "$XWS_OUT" \
+          nix path-info -r --json --json-format 1 "$TARGET_OUT" \
             | jq -r 'keys[]' > /tmp/closure.txt
           echo "closure paths: $(wc -l < /tmp/closure.txt)"
           : > /tmp/wanted.txt
@@ -156,10 +162,10 @@ jobs:
             exit 1
           fi
           echo "all narinfos signed"
-          ( cd nixcache-stage && ls -1 | sort > ../manifest.txt )
-          wc -l manifest.txt
+          ( cd nixcache-stage && ls -1 | sort > ../manifest-new.txt )
+          wc -l manifest-new.txt
 
-      - name: Publish to rolling nixcache tag (upload + GC, void pattern)
+      - name: Publish to rolling nixcache tag (upload + GC)
         if: env.PUBLISH == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -183,17 +189,25 @@ jobs:
             return 1
           }
           existing=$(gh release view nixcache -R "$REPO" --json assets --jq '.assets[].name' || true)
+          # Union old manifest with this run's files: concurrent/alternating
+          # runs must NEVER garbage-collect each other's packages.
+          gh release download nixcache -R "$REPO" -p manifest.txt -D /tmp/oldmanifest 2>/dev/null || true
+          if [ -f /tmp/oldmanifest/manifest.txt ]; then
+            cat /tmp/oldmanifest/manifest.txt manifest-new.txt | sort -u > manifest.txt
+          else
+            cp manifest-new.txt manifest.txt
+          fi
           while read -r f; do
-            f=${f#./}
+            [ -z "$f" ] && continue
             if [ "${{ github.event.inputs.force_rebuild }}" != "true" ] \
                && echo "$existing" | grep -qFx "$f"; then
               echo "  skip (already published): $f"
               continue
             fi
             retry_upload "nixcache-stage/$f"
-          done < manifest.txt
+          done < manifest-new.txt
           retry_upload "manifest.txt"
-          echo ">>> GC: purging superseded assets"
+          echo ">>> GC: purging assets outside the union manifest"
           while read -r asset; do
             [ -z "$asset" ] && continue
             [ "$asset" = "manifest.txt" ] && continue
@@ -202,3 +216,21 @@ jobs:
               gh release delete-asset nixcache "$asset" --repo "$REPO" -y 2>/dev/null || true
             fi
           done <<< "$existing"
+
+      - name: Relay to next package in queue
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          read -r -a PKGS <<< "${{ env.PACKAGE_LIST }}"
+          REMAINING="${PKGS[@]:1}"
+          if [ -n "$REMAINING" ]; then
+            echo "relaying to: $REMAINING (this package done or failed, queue continues)"
+            gh workflow run "nixcache.yml" \
+              --ref "${GITHUB_REF_NAME}" \
+              --repo "${{ github.repository }}" \
+              -f packages="$REMAINING" \
+              -f force_rebuild="${{ github.event.inputs.force_rebuild || 'false' }}"
+          else
+            echo "queue finished."
+          fi
