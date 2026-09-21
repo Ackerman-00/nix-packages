@@ -90,10 +90,84 @@ jobs:
             echo "  $1: ${REV:0:7} -> $SHORT ($NV)"
           }
 
+          # ---- Rust overlay packages (rev-pinned source builds) ----
+          # niri-unstable + xwayland-satellite-unstable track upstream HEAD.
+          # nix-update cannot do these (no tags consumed + cargoHash must be
+          # refreshed per rev). rust_rev_update does all of it IN CI and
+          # build-gates: a rev that doesn't compile is reverted, never pushed.
+          rust_rev_update() {
+            local f="pkgs/$1.nix" O="$2" R="$3"
+            local CUR HEAD OUT SRCHASH GOT DATE SHORT
+            CUR=$(grep -oP 'rev = "\K[0-9a-f]{40}' "$f" | head -1 || true)
+            HEAD=$(git ls-remote "https://github.com/$O/$R.git" HEAD 2>/dev/null | awk '{print $1}')
+            [ -n "$HEAD" ] || { echo "  WARN: $1 ls-remote failed"; return 0; }
+            if [ "$HEAD" = "$CUR" ] && ! grep -q "fakeHash" "$f"; then
+              echo "  $1: already at HEAD (${HEAD:0:12})"
+              return 0
+            fi
+            echo "  $1: ${CUR:0:12} -> ${HEAD:0:12}"
+            # 1. fresh src tree hash (fetchGit NAR hash = what fetchFromGitHub wants)
+            OUT=$(nix eval --impure --json --expr "builtins.fetchGit { url = \"https://github.com/$O/$R\"; rev = \"$HEAD\"; }" 2>/dev/null | jq -r .outPath || true)
+            [ -n "$OUT" ] || { echo "  WARN: $1 fetchGit failed"; return 0; }
+            SRCHASH=$(nix path-info --json --json-format 1 "$OUT" 2>/dev/null | jq -r '.[].narHash' || true)
+            [ -n "$SRCHASH" ] && [ "$SRCHASH" != "null" ] || { echo "  WARN: $1 narHash failed"; return 0; }
+            python3 - "$f" "$CUR" "$HEAD" "$SRCHASH" <<'PYEOF'
+          import re, sys
+          path, cur, head, srchash = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+          text = open(path).read()
+          if cur:
+              text = text.replace(cur, head)
+          # replace ONLY the src hash: first hash="sha256-..." after the rev line
+          m = re.search(r'(rev = "[0-9a-f]{40}"[^;]*?hash = ")sha256-[^"]+(")', text, re.S)
+          if not m:
+              m = re.search(r'(rev = "[0-9a-f]{40}".{0,400}?hash = ")([^"]*)(")', text, re.S)
+          assert m, "src hash anchor not found"
+          text = text[:m.start()] + m.group(1) + srchash + m.group(3) + text[m.end():]
+          open(path, "w").write(text)
+          print("  src hash refreshed")
+          PYEOF
+            # 2. cargoHash via the standard error trick (never guessed)
+            sed -i 's|cargoHash = "sha256-[^"]*"|cargoHash = ""|; s|cargoHash = lib.fakeHash|cargoHash = ""|' "$f"
+            GOT=$(nix build ".#packages.x86_64-linux.$1" --print-out-paths 2>&1 | grep -oP 'got:\s*\Ksha256-[A-Za-z0-9+/=]+' | head -1 || true)
+            if [ -z "$GOT" ]; then
+              echo "  WARN: $1 no cargoHash captured (build may have failed early) - reverting file"
+              git checkout -- "$f"
+              return 0
+            fi
+            sed -i "s|cargoHash = \"\"|cargoHash = \"$GOT\"|" "$f"
+            # 3. version stamp + NIRI_BUILD_COMMIT (niri only)
+            DATE=$(date -u +%F); SHORT=${HEAD:0:7}
+            sed -i -E "s|^(\\s*)version = \"0-unstable-[^\"]*\"|\\1version = \"0-unstable-$DATE\"|" "$f"
+            if [ "$1" = "niri-unstable" ]; then
+              sed -i "s|NIRI_BUILD_COMMIT = \"[0-9a-f]*\"|NIRI_BUILD_COMMIT = \"$SHORT\"|" "$f"
+            fi
+            # 4. BUILD GATE: full compile must exit 0 or the bump is reverted
+            if nix build ".#packages.x86_64-linux.$1" --print-out-paths >/dev/null 2>&1; then
+              UPDATED=1
+              echo "  $1: bumped + BUILD GATE PASS"
+            else
+              echo "  WARN: $1 new rev does not compile - reverting (last-good pin holds)"
+              git checkout -- "$f"
+            fi
+          }
+
           for f in pkgs/*.nix; do
             name=$(basename "$f" .nix)
             # rootapp handled above (raw URL, no version to detect)
             [ "$name" = "rootapp" ] && continue
+
+            # Rust overlay pins go STRAIGHT to rust_rev_update (rev + src
+            # hash + cargoHash + build gate, all in CI)
+            if [ "$name" = "niri-unstable" ]; then
+              echo ">>> rust-rev niri-unstable (niri-wm/niri HEAD)"
+              rust_rev_update "$name" "niri-wm" "niri"
+              continue
+            fi
+            if [ "$name" = "xwayland-satellite-unstable" ]; then
+              echo ">>> rust-rev xwayland-satellite-unstable (Supreeeme HEAD)"
+              rust_rev_update "$name" "Supreeeme" "xwayland-satellite"
+              continue
+            fi
 
             # Pre-route tagless upstreams STRAIGHT to -git mode: running
             # nix-update against them only produces a VersionError traceback

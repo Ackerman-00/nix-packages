@@ -1,0 +1,158 @@
+name: Nix Binary Cache (rolling release)
+
+# Void-nexus build.yml pattern, adapted for Nix: CI compiles the rev-pinned
+# source builds, signs them, publishes a dumb-HTTP binary cache layout
+# (nix-cache-info + .narinfo + .nar) as assets on the rolling `nixcache` tag,
+# and garbage-collects superseded files. Users add the release URL as a
+# substituter + the public key (nixcache.pub in repo root) and get binaries.
+# NO local builds, NO paid cache. Compiling happens HERE, on schedule/push.
+on:
+  push:
+    paths:
+      - 'pkgs/niri-unstable.nix'
+      - 'pkgs/xwayland-satellite-unstable.nix'
+      - 'flake.nix'
+      - 'flake.lock'
+      - '.github/workflows/nixcache.yml'
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: 'Republish even if narinfos already exist'
+        required: false
+        default: 'false'
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nixcache
+  cancel-in-progress: false
+
+jobs:
+  build-sign-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes fetch-closure
+
+      - name: Magic Nix Cache (CI speed, free)
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Build pinned source packages
+        run: |
+          set -euo pipefail
+          for pkg in niri-unstable xwayland-satellite-unstable; do
+            echo ">>> building $pkg"
+            nix build ".#packages.x86_64-linux.$pkg" --print-out-paths
+          done
+          NIRI_OUT=$(nix build ".#packages.x86_64-linux.niri-unstable" --print-out-paths --no-link 2>/dev/null || nix path-info ".#packages.x86_64-linux.niri-unstable")
+          XWS_OUT=$(nix build ".#packages.x86_64-linux.xwayland-satellite-unstable" --print-out-paths --no-link 2>/dev/null || nix path-info ".#packages.x86_64-linux.xwayland-satellite-unstable")
+          echo "NIRI_OUT=$NIRI_OUT" >> "$GITHUB_ENV"
+          echo "XWS_OUT=$XWS_OUT" >> "$GITHUB_ENV"
+
+      - name: Sign closure (or warn-only without key)
+        env:
+          NIX_SIGNING_KEY: ${{ secrets.NIX_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${NIX_SIGNING_KEY:-}" ]; then
+            echo "::warning::NIX_SIGNING_KEY secret missing - build verified but publish will be SKIPPED. Owner: generate with 'nix-store --generate-binary-cache-key nixcache ./cache-priv.pem ./nixcache.pub', commit nixcache.pub, store private half as NIX_SIGNING_KEY."
+            echo "PUBLISH=false" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          printf '%s' "$NIX_SIGNING_KEY" > /tmp/cache-priv.pem
+          chmod 600 /tmp/cache-priv.pem
+          for out in "$NIRI_OUT" "$XWS_OUT"; do
+            nix store sign --recursive --key-file /tmp/cache-priv.pem "$out" \
+              || nix-store --sign-paths -k /tmp/cache-priv.pem "$out"
+          done
+          echo "PUBLISH=true" >> "$GITHUB_ENV"
+          rm -f /tmp/cache-priv.pem
+
+      - name: Assemble file-cache layout (dedup vs cache.nixos.org)
+        if: env.PUBLISH == 'true'
+        run: |
+          set -euo pipefail
+          rm -rf nixcache-stage && mkdir -p nixcache-stage
+          nix path-info -r --json --json-format 1 "$NIRI_OUT" "$XWS_OUT" \
+            | jq -r 'keys[]' > /tmp/closure.txt
+          echo "closure paths: $(wc -l < /tmp/closure.txt)"
+          : > /tmp/wanted.txt
+          while read -r p; do
+            h=$(basename "$p" | cut -d- -f1)
+            code=$(curl -sI -o /dev/null -w "%{http_code}" --max-time 15 "https://cache.nixos.org/$h.narinfo" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "  skip (upstream has it): $(basename "$p")"
+            else
+              echo "$p" >> /tmp/wanted.txt
+            fi
+          done < /tmp/closure.txt
+          echo "publishing $(wc -l < /tmp/wanted.txt) store paths"
+          # shellcheck disable=SC2046
+          nix copy --to "file://$PWD/nixcache-stage" $(cat /tmp/wanted.txt)
+          # Flatten for release assets (gh upload keeps basenames only):
+          # move nar/* up, then rewrite narinfo URL fields to the flat names.
+          # Hashes (FileHash/NarHash/Sig) are content-based, unaffected.
+          mv nixcache-stage/nar/* nixcache-stage/ 2>/dev/null || true
+          rmdir nixcache-stage/nar 2>/dev/null || true
+          sed -i 's|^URL: nar/|URL: |' nixcache-stage/*.narinfo
+          # self-verify: every narinfo we ship must carry our Sig
+          missing=$(grep -L "^Sig: " nixcache-stage/*.narinfo 2>/dev/null || true)
+          if [ -n "$missing" ]; then
+            echo "::error::unsigned narinfos (signing did not stick): $missing"
+            exit 1
+          fi
+          echo "all narinfos signed"
+          ( cd nixcache-stage && ls -1 | sort > ../manifest.txt )
+          wc -l manifest.txt
+
+      - name: Publish to rolling nixcache tag (upload + GC, void pattern)
+        if: env.PUBLISH == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh release view nixcache -R "$REPO" 2>/dev/null \
+            || gh release create nixcache -R "$REPO" \
+                 --title "Nix Binary Cache (rolling)" \
+                 --notes "Dumb-HTTP Nix binary cache: add https://github.com/$REPO/releases/download/nixcache as substituter + nixcache.pub key. Rolling: superseded files are garbage-collected." \
+                 --prerelease
+          retry_upload() {
+            local file="$1" max=3
+            for i in $(seq 1 $max); do
+              if gh release upload nixcache -R "$REPO" "$file" --clobber 2>&1; then
+                return 0
+              fi
+              sleep 10
+            done
+            echo "::error::upload failed: $file"
+            return 1
+          }
+          existing=$(gh release view nixcache -R "$REPO" --json assets --jq '.assets[].name' || true)
+          while read -r f; do
+            f=${f#./}
+            if [ "${{ github.event.inputs.force_rebuild }}" != "true" ] \
+               && echo "$existing" | grep -qFx "$f"; then
+              echo "  skip (already published): $f"
+              continue
+            fi
+            retry_upload "nixcache-stage/$f"
+          done < manifest.txt
+          retry_upload "manifest.txt"
+          echo ">>> GC: purging superseded assets"
+          while read -r asset; do
+            [ -z "$asset" ] && continue
+            [ "$asset" = "manifest.txt" ] && continue
+            if ! grep -qFx "$asset" manifest.txt; then
+              echo "  deleting: $asset"
+              gh release delete-asset nixcache "$asset" --repo "$REPO" -y 2>/dev/null || true
+            fi
+          done <<< "$existing"

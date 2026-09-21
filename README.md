@@ -1,10 +1,9 @@
 ## Packages
 
 * `rootapp` — Root Field Service Management (AppImage, x86_64 + aarch64)
-* `opencode-desktop` — AI coding agent desktop client (.deb, x86_64 + aarch64)
-* `helium` — Private, fast, and honest web browser based on Chromium (tar.xz, x86_64 + aarch64)
-* `protonplus` — Modern Wine/Proton compatibility tools manager (AppImage, x86_64 + aarch64)
 * `zen-browser` — Beautifully designed, privacy-focused Firefox fork (tar.xz, x86_64 + aarch64)
+* `niri-unstable` — Scrollable-tiling Wayland compositor, latest upstream commit (source build, x86_64; binary via our cache below)
+* `xwayland-satellite-unstable` — Rootless Xwayland integration, latest upstream commit (source build, x86_64; binary via our cache below)
 * `mixtapes` — Modern, Linux-first YouTube Music player built with GTK4 and Libadwaita (source, x86_64 + aarch64)
 * `splayer-next` — Cross-platform desktop music player with rich lyric support (tar.gz, x86_64 + aarch64)
 
@@ -45,10 +44,9 @@ Pass the inputs to your system configuration and add the desired applications to
           environment.systemPackages = [
             # Add the packages here
             inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.rootapp
-            inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.opencode-desktop
-            inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.helium
-            inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.protonplus
             inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.zen-browser
+            inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.niri-unstable
+            inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.xwayland-satellite-unstable
             inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.mixtapes
             inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.splayer-next
           ];
@@ -63,10 +61,23 @@ Pass the inputs to your system configuration and add the desired applications to
 
 ```bash
 nix run github:Ackerman-00/nix-packages#rootapp
-nix run github:Ackerman-00/nix-packages#opencode-desktop
-nix run github:Ackerman-00/nix-packages#helium
-nix run github:Ackerman-00/nix-packages#protonplus
 nix run github:Ackerman-00/nix-packages#zen-browser
+nix run github:Ackerman-00/nix-packages#niri-unstable
+nix run github:Ackerman-00/nix-packages#xwayland-satellite-unstable
+```
+
+## Binary cache (free, no Cachix)
+
+Every CI-built rev of the `-unstable` source packages is signed and published
+to the rolling `nixcache` release on this repo (same pattern as void-nexus).
+Add it once — `flake update` then fetches binaries, never compiles:
+
+```nix
+nix.settings = {
+  substituters = [ "https://github.com/Ackerman-00/nix-packages/releases/download/nixcache" ];
+  trusted-public-keys = [ "nixcache:5i/lXrpYqlfr2c6eNC6aieaaS8CvZMzDbGB2dhlz3qI=" ];
+};
+```
 nix run github:Ackerman-00/nix-packages#mixtapes
 nix run github:Ackerman-00/nix-packages#splayer-next
 ```

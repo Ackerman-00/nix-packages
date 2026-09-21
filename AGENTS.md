@@ -55,7 +55,7 @@ YOU are the sweep. The PROMPT's TEAR-APART + DOCKER BATTLE TEST is NOT optional.
 It must:
 
 1. Tear every `pkgs/*.nix` + `flake.nix`/`flake.lock` apart itself (fetchurl → extract → `ldd` NEEDED vs `runtimeDeps`/`makeLibraryPath`), run 2026 toolchain: `nix flake check` + `nixfmt` + `nixpkgs-hammering` (pkgs/README.md Aug 2026), `nix build` + `nix run` — log output
-2. Produce mandatory `| package | upstream deps | in nix | missing | status |` for ALL 5 packages
+2. Produce mandatory `| package | upstream deps | in nix | missing | status |` for EVERY package (derive via `ls pkgs/*.nix`, NEVER hardcode the count)
    - OSV.dev vulnerability scan (CVEs on pinned version)
    - Repology freshness (outdated vs 120+ repos)
    - Libyear drift (years behind upstream, budget=20yr)

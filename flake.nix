@@ -28,28 +28,29 @@
               allowUnfree = true;
             };
           };
-          helium = pkgs.callPackage ./pkgs/helium.nix { inherit lib; };
-          protonplus = pkgs.callPackage ./pkgs/protonplus.nix { inherit lib; };
           zen-browser = pkgs.callPackage ./pkgs/zen-browser.nix { inherit lib; };
-          opencode-desktop = pkgs.callPackage ./pkgs/opencode-desktop.nix { inherit lib; };
           rootapp = pkgs.callPackage ./pkgs/rootapp.nix { inherit lib; };
           mixtapes = pkgs.callPackage ./pkgs/mixtapes.nix { inherit lib; };
           splayer-next = pkgs.callPackage ./pkgs/splayer-next.nix { inherit lib; };
+          xwayland-satellite-unstable = pkgs.callPackage ./pkgs/xwayland-satellite-unstable.nix { inherit lib; };
+          niri-unstable = pkgs.callPackage ./pkgs/niri-unstable.nix {
+            inherit lib;
+            xwayland-satellite-unstable = xwayland-satellite-unstable;
+          };
         in
         {
-          helium = helium;
-          protonplus = protonplus;
           zen-browser = zen-browser;
-          opencode-desktop = opencode-desktop;
           rootapp = rootapp;
           mixtapes = mixtapes;
           splayer-next = splayer-next;
+          xwayland-satellite-unstable = xwayland-satellite-unstable;
+          niri-unstable = niri-unstable;
         }
         // lib.optionalAttrs (system == "x86_64-linux") {
           default = self.packages.${system}.rootapp;
         }
         // lib.optionalAttrs (system == "aarch64-linux") {
-          default = helium;
+          default = zen-browser;
         }
       );
     };

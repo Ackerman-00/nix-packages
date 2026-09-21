@@ -43,9 +43,57 @@ jobs:
           git config --global user.email "41898282+opencode-agent[bot]@users.noreply.github.com"
           git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
-      - name: Install opencode (latest)
+      - name: Install opencode (latest, resilient)
         shell: bash
-        run: curl -fsSL https://opencode.ai/install | bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -u
+          mkdir -p "$HOME/.opencode/bin"
+          export PATH="$HOME/.opencode/bin:$PATH"
+          # 1) Official V2 installer, retried (the V1 installer at
+          #    https://opencode.ai/install ships opencode 1.x - V2 lives at
+          #    https://opencode.ai/v2/install, verified 2026-09-21).
+          for i in 1 2 3 4; do
+            if curl -fsSL --retry 3 --retry-delay 10 --retry-all-errors https://opencode.ai/v2/install | bash; then
+              break
+            fi
+            echo "opencode install attempt $i/4 failed - sleeping 30s"
+            sleep 30
+          done
+          # 2) npm fallback (V2 package). Link into $HOME/.opencode/bin.
+          if ! command -v opencode >/dev/null 2>&1; then
+            echo "official installer failed - trying npm"
+            npm install -g @opencode/cli || sudo npm install -g @opencode/cli || true
+            if command -v opencode >/dev/null 2>&1; then
+              ln -sf "$(command -v opencode)" "$HOME/.opencode/bin/opencode"
+            fi
+          fi
+          # 3) Authenticated GitHub-release fallback (5000/hr quota).
+          #    V2 releases live at opencode-ai/opencode; asset discovered live.
+          if ! command -v opencode >/dev/null 2>&1; then
+            echo "npm fallback failed - trying authenticated gh release download"
+            asset="$(gh release view --repo opencode-ai/opencode --json assets --jq '.assets[].name' | grep -E '^opencode-linux-(x86_64|x64|amd64).*\.(tar\.gz|tgz|zip)$' | head -n 1)"
+            if [ -n "$asset" ]; then
+              echo "downloading asset: $asset"
+              mkdir -p /tmp/opencode-dl
+              gh release download --repo opencode-ai/opencode --pattern "$asset" --dir /tmp/opencode-dl --clobber
+              case "$asset" in
+                *.zip) unzip -o /tmp/opencode-dl/"$asset" -d "$HOME/.opencode/bin" ;;
+                *) tar -xzf /tmp/opencode-dl/"$asset" -C "$HOME/.opencode/bin" ;;
+              esac
+            else
+              echo "no linux x64 asset found in latest opencode-ai/opencode release"
+            fi
+          fi
+          # Hard gate + V1 tripwire (2026-09-21: V1 installer ships 1.x -
+          # fail fast, never run a job on V1).
+          command -v opencode && opencode --version
+          ver="$(opencode --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
+          case "$ver" in
+            1.*) echo "FATAL: opencode V1 ($ver) installed - V2 required, aborting run" >&2; exit 1 ;;
+            *) echo "opencode version OK: $ver (V2+)" ;;
+          esac
 
       - name: Run opencode
         shell: bash
@@ -61,12 +109,56 @@ jobs:
             if [ -z "$content" ]; then
               content="$(gh api "repos/${GITHUB_REPOSITORY}/contents/.opencode-relay.md?ref=main" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null || true)"
             fi
-            printf '%s' "$content" | grep -qx "run_id: $RUN_ID" && printf '%s' "$content" | grep -qi "status: complete" && printf '%s' "$content" | grep -qi "PACKAGE.*BR\|deps-verified\|dependency audit"
+            # Same bar as tools/verify-nix.sh - keep both in sync. The inline
+            # gate must never be weaker than the external verifier.
+            printf '%s' "$content" | grep -qx "run_id: $RUN_ID" || return 1
+            printf '%s' "$content" | grep -qi "status: complete" || return 1
+            printf '%s' "$content" | grep -qi "PACKAGE.*BR\|deps-verified\|dependency audit" || return 1
+            local expected dep_rows unproven_rows teardown_pass tool
+            expected=$(find pkgs -maxdepth 1 -name '*.nix' 2>/dev/null | wc -l)
+            [ "$expected" -gt 0 ] || return 1
+            dep_rows=$(printf '%s' "$content" | grep -c "deps-verified\|deps-fixed\|version-checked" || true)
+            [ "$dep_rows" -ge "$expected" ] || return 1
+            printf '%s' "$content" | grep -qi "DOCKER BATTLE TEST" || return 1
+            for tool in "nix flake check" "nix build" "nixfmt"; do
+              printf '%s' "$content" | grep -qi "$tool.*PASS\|PASS.*$tool" || return 1
+            done
+            printf '%s' "$content" | grep -qi "install-test table" || return 1
+            local mains_pkg
+            mains=$(find pkgs -maxdepth 1 -name '*.nix' -exec basename {} .nix \;)
+            for mains_pkg in $mains; do
+              printf '%s' "$content" | grep -qiE "nix-teardown: $mains_pkg img:sha256:[0-9a-f]{12,} .*PASS" || return 1
+            done
+            today=$(date -u +%F); yest=$(date -u -d yesterday +%F 2>/dev/null || date -u -v-1d +%F)
+            printf '%s' "$content" | grep -qiE "gh-rate: [0-9]+/[0-9]+ .*($today|$yest)" || return 1
+            if [ -f pkgs/niri-unstable.nix ]; then
+              printf '%s' "$content" | grep -qiE "wrap-proof: niri-unstable .*xwayland-satellite" || return 1
+            fi
+            for mains_pkg in $mains; do
+              printf '%s' "$content" | grep -qiE "upstream: $mains_pkg .*($today|$yest)" || return 1
+            done
+            return 0
           }
-          for model in "opencode/muse-spark-1.3-contributor-free" "opencode/mimo-v2.5-free" "opencode/ling-3.0-flash-fin-free" "opencode/nemotron-3-ultra-free" "opencode/nemotron-3.5-lightning-free" "opencode/big-pickle"; do
+          # Start jitter: desync from the thundering herd on free-model gateways.
+          sleep $((RANDOM % 180))
+          for model in "opencode/muse-spark-1.3-contributor-free" "opencode/mimo-v2.5-free" "opencode/deepseek-v4-flash-free" "opencode/muse-spark-1.2-contributor-free" "opencode/big-pickle" "opencode/nemotron-3.5-lightning-free" "opencode/nemotron-3-ultra-free" "opencode/ling-3.0-flash-fin-free"; do
             echo "=== opencode run attempt with $model ==="
             exit_code=0
-            MODEL="$model" opencode run -m "$model" --dangerously-skip-permissions --agent=build --print-logs "$PROMPT" || exit_code=$?
+            # Per-model retries with backoff: free-tier gateways drop sockets
+            # under load. Retry the SAME model (3 tries, full jitter) before
+            # falling through. Bounded so one dead model can't eat the run.
+            for attempt_n in 1 2 3; do
+              if MODEL="$model" opencode run --standalone --model "$model" --agent build "$PROMPT"; then
+                exit_code=0
+                break
+              fi
+              exit_code=$?
+              if [ "$attempt_n" -lt 3 ]; then
+                delay=$((RANDOM % (120 * attempt_n)))
+                echo "=== $model try $attempt_n/3 failed (exit $exit_code) - backing off ${delay}s ==="
+                sleep "$delay"
+              fi
+            done
             if [ "$exit_code" -eq 0 ]; then
               ok=0
               for attempt in $(seq 1 10); do
@@ -85,12 +177,13 @@ jobs:
             else
               echo "=== attempt with $model failed (exit $exit_code) - trying next ==="
             fi
-            sleep 15
+            # Long inter-model sleep: hammering a loaded gateway faster makes it worse.
+            sleep 60
           done
           exit 1
         env:
           MODEL: opencode/muse-spark-1.3-contributor-free
-          OPENCODE_CONFIG_CONTENT: '{"small_model":"opencode/mimo-v2.5-free"}'
+          OPENCODE_CONFIG_CONTENT: '{"agents":{"title":{"model":"opencode/mimo-v2.5-free"}}}'
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -142,7 +235,7 @@ jobs:
 
             UNDERSTAND WHAT THIS REPO IS. It is a Nix flake (`flake.nix` + `flake.lock`)
             exposing `packages.${system}.*` via `pkgs.callPackage ./pkgs/*.nix` for
-            `x86_64-linux` + `aarch64-linux`. Each package is either `fetchurl`+`mkDerivation`+`patchelf`+`makeWrapper`+`makeLibraryPath` (helium, protonplus, zen-browser) or `appimageTools.extractType2/wrapType2` (rootapp) or `fetchurl` .deb extract (opencode-desktop). Built via `nix build` / `nix run`, not `nixpkgs` PRs. Read `flake.nix`, `pkgs/*.nix`, `README.md` before touching anything.
+            `x86_64-linux` + `aarch64-linux`. Each package is `fetchurl`+`mkDerivation`+`patchelf`+`makeWrapper` (zen-browser tar.xz, splayer-next tarball) or `appimageTools.extractType2/wrapType2` (rootapp) or source-built (mixtapes). Built via `nix build` / `nix run`. Inventory is DERIVED every run via `ls pkgs/*.nix` - NEVER hardcode a package list or count. Read `flake.nix`, `pkgs/*.nix`, `README.md` before touching anything.
 
             CONTEXT
             - Packages live as `pkgs/<name>.nix` (helium.nix, rootapp.nix, etc.) + `flake.nix` `forAllSystems` + `flake.lock` pins nixpkgs `nixos-unstable`.
@@ -157,15 +250,23 @@ jobs:
             PACKAGE DEPENDENCY DEEP AUDIT (MANDATORY - "TEAR EVERY PACKAGE APART"; applies to every package, every run):
               a0. CHECK OFFICIAL PACKAGING FIRST (2026 advanced -- web search latest, August 2026): For `{pkg}`, first check the official distro packaging -- nixpkgs (github.com/NixOS/nixpkgs/pkgs/<category>/<pkg>/default.nix + search.nixos.org) (`git clone --depth 1 https://github.com/NixOS/nixpkgs.git /tmp/nixpkgs && find /tmp/nixpkgs/pkgs -type f -name "default.nix" -path "*/<pkg>/*"`) -- if found, read its `buildInputs`/`runtimeDeps`/`version` as the latest reference for dependencies (official is where newer default.nix land first). If official has a newer default.nix/dependencies than ours, align with it (keep our flake's `allowUnfree`/`binaryNativeCode`). If official has no default.nix for this package (404 / no file), then proceed to tear apart upstream `tar`/`deb`/`rpm`/`AppImage` in Docker as below -- download into `/tmp` (never repo tree), extract, and derive deps from inside (`ldd` `NEEDED` vs `runtimeDeps` vs `RDEPEND` etc.). Web-search 2026 for official + upstream before deciding.
               a. OPEN THE PACKAGE. Read FULL `pkgs/<pkg>.nix` (`pname`, `version`, `archives` per system, `runtimeDeps`/`buildInputs`, `nativeBuildInputs` `patchelf`/`makeWrapper`, `rpath = lib.makeLibraryPath`, `meta`). Download `fetchurl` URL into /tmp (gitignored) and EXTRACT (`tar xf`, `ar x`+`tar xf`, `unsquashfs` for AppImage). Inspect upstream files: `Cargo.toml`, `package.json`, `meson.build`, `CMakeLists.txt`, `go.mod`, `*.so` NEEDED via `patchelf --print-rpath` / `ldd` / `readelf -d | grep NEEDED`. NEVER guess deps from memory.
-                 For binary packages (helium tar.xz, rootapp AppImage, opencode-desktop .deb, protonplus AppImage, zen-browser tar.xz): tear apart exactly as `pkgs/*.nix` does, read internal version (`application.ini`, `package.json`, `helium --version` probe via `appimageTools`), compare sha256-SRI vs pinned `hash`. RE-TEAR if upstream changed at all since last audit.
+                 For binary packages (zen-browser tar.xz, rootapp AppImage, splayer-next tarball, mixtapes source): tear apart exactly as `pkgs/*.nix` does, read internal version (`application.ini`, `package.json`, desktop files, `--version` probes), compare sha256-SRI vs pinned `hash`. RE-TEAR if upstream changed at all since last audit.
               b. DERIVE TRUE RUNTIME DEPS from `ldd` of every ELF in extracted tree + `runtimeDeps` list. Every `NEEDED .so` must be in `runtimeDeps` via `makeLibraryPath` (or host-provided). For AppImage `wrapType2`, `appimageContents` already handles.
               c. COMPARE against `pkgs/*.nix` `runtimeDeps`: missing = bug, extra dead = rot. Fix.
               d. WEB-SEARCH-VERIFY every dep exists in `nixpkgs` under that exact `pkgs.<name>` (search `nix search nixpkgs#<name>` or `https://search.nixos.org/packages?query=<name>`, or `https://repology.org/project/<name>`). If not in nixpkgs, do NOT invent -- report.
               e. ALSO AUDIT `meta.*` per `pkgs/README.md`: `description` one sentence, capitalized, no period; `license` correct SPDX; `sourceProvenance` set for binary; `mainProgram` exact bin name; `platforms` linux; document any `version` pin (`unstable-YYYY-MM-DD` handling).
-              f. APPLY AND VERIFY: add deps (alphabetized in `runtimeDeps`), `hash` update via `nix hash to-sri --type sha256 $(nix-prefetch-url --type sha256 <url>)` or `nix-prefetch-url`, commit, push, then `nix build .#packages.x86_64-linux.<pkg>` in `nixos/nix` container -- must build 0, then `nix run .#<pkg> -- --version` smoke. Retry 3×, revert + issue if still broken.
-              g. MANDATORY DELIVERABLE - dependency audit table for EVERY package (all 5): | package | upstream deps found | in nix | missing/added | extra/dropped | status | (deps-verified/deps-fixed/blocked). If any package missing, run not finished.
+              f. APPLY AND VERIFY: add deps (alphabetized in `runtimeDeps`), `hash` update via `nix hash to-sri --type sha256 $(nix-prefetch-url --type sha256 <url>)` or `nix-prefetch-url`, commit, push, then `nix build .#packages.x86_64-linux.<pkg>` in a FRESH `nixos/nix:latest` container -- must build 0, then `nix run .#<pkg> -- --version` smoke. Retry 3×, revert + issue if still broken. PROVENANCE (2026-09-22, no exceptions): teardown evidence counts ONLY from fresh `nixos/nix` containers - host-nix builds (including the preinstalled nix in /oc jobs) are eval-only hints, never evidence. Every teardown token carries the container image digest: `nix-teardown: <pkg> img:sha256:<12+hex of the pulled nixos/nix image> build PASS run PASS` (get it via `docker images --digests nixos/nix` or `docker inspect`). Every GitHub API call uses `gh api` with GITHUB_TOKEN (never bare curl - the 60/hr unauthenticated quota burns out and lies by omission); prove it with one relay line `gh-rate: <remaining>/<limit> <today-UTC-date>` from `gh api rate_limit --jq`. A teardown token without a digest, or upstream lines without a fresh gh-rate line, fails the gate.
+              g. MANDATORY DELIVERABLE - dependency audit table for EVERY package (derive the inventory via `ls pkgs/*.nix`, NEVER hardcode the count): | package | upstream deps found | in nix | missing/added | extra/dropped | status | (deps-verified/deps-fixed/version-checked/blocked). HONEST LABELS (2026-09-22, enforced by the verifier): `deps-verified` ONLY with this run's `nix-teardown: <pkg> build PASS run PASS` token (fresh-container `nix build` + `nix run` smoke); `deps-fixed` when you changed the nix AND rebuilt after; `version-checked` for updater/tags/API freshness WITHOUT a container teardown. A `deps-verified` row with no teardown token is a gate failure. If any package missing, run not finished.
+              g2. ALWAYS-LIVE (2026-09-22, no exceptions, no carry-over): upstream + dependency checks for EVERY package run FRESH every run with raw output pasted in the relay, one line per package: `upstream: <pkg> <ref>@<ver> == nix | <cmd> | <today-UTC-date>` (the UTC date proves the check ran this run - the verifier rejects lines dated any other day). Rev-pinned source builds (niri-unstable, xwayland-satellite-unstable): `git ls-remote HEAD` check + cargoHash refresh + full build gate per update.yml rust_rev_update (a rev that doesn't compile is reverted, never pushed). Reusing a previous run's conclusion is a gate failure even if upstream did not move.
+              g3. NIRI-STACK WATCHER (STRICT, 2026-09-22 - niri-unstable + xwayland-satellite-unstable are source builds; a silent upstream change breaks compilation and NO binary cache can save a package that doesn't build):
+                 - UPSTREAM FLAKE DEP-DIFF every run: fetch niri-wm/niri's flake.nix inputs + buildInputs list live and diff against our pkgs/niri-unstable.nix buildInputs (same for xwayland-satellite Cargo.toml [dependencies]/[features] vs ours). Any upstream-added dep (new library, new feature flag, renamed input like a libdisplay-info bump) = spec bug until mirrored into our expression + rebuilt green the SAME run.
+                 - CARGO DEPS: diff Cargo.lock package list (both repos) against last run's recorded list in the relay; new crates are fine (cargoHash refresh covers them) but new SYSTEM deps behind a crate (pkg-config probes, bindgen headers, vergen git metadata) must map to an explicit nixpkgs input - `ldd` the built binaries and account every NEEDED.
+                 - WRAP PROOF: after building, grep result/bin/niri wrapper for the xwayland-satellite-unstable store path (must be present - niri execs it at runtime, unwrapped = broken compositor). Record the grep output.
+                 - SMOKE (nixos/nix container, headless-safe): `niri --help` exit 0 + `xwayland-satellite --help` exit 0. Full compositor launch is impossible headless and is NOT required; build exit 0 + wrapper proof + help smokes ARE.
+                 - BUILDABLE is proven ONLY by this run's `nix build` exit 0 on the CURRENT rev. Never "it built last run", never "upstream CI is green". If HEAD moved and the build fails: revert per update.yml, open/refresh the issue with the log lines, keep last-good pin + last-good binaries serving users.
+                 - nixcache.yml publishes ONLY green builds (it fires on push; a reverted bump pushes nothing, so nothing stale ever publishes).
               h. 2026 AUTOMATED EXCELLENCE CHECKS (MANDATORY - August 2026 Nix):
-                 For EVERY nix you touched (and 5-sample), run and paste output:
+                 For EVERY nix you touched (and at least a 3-sample of the full inventory - derive the count via `ls pkgs/*.nix`, NEVER hardcode the number), run and paste output:
                  - `nix flake check` -- must be clean (pure evaluation, no `builtins.currentSystem`, `with import <nixpkgs>` banned; `config = {}; overlays = [];`)
                  - `nixfmt` (or `nixpkgs-fmt`) -- `nixfmt pkgs/*.nix` must be clean or diff justified
                  - `nixpkgs-hammering` (`nix run github:jtojnar/nixpkgs-hammering <pkg>`) -- fix E: (meta, version starts with digit, no alias, license, mainProgram)
@@ -186,9 +287,11 @@ jobs:
             NEVER complete a run without tearing apart every package. The sweep is NOT a separate script -- YOU are the sweep.
             SWEEP SCRIPT IS CODE YOU OWN: tools/teardown-sweep.py and tools/docker-sweep.py exist as auxiliary tools you can call, but YOU do the reasoning. If they help, use them. If they break, fix them.
 
-            VERIFICATION LOOP (MANDATORY - battle-tested 2026: pre-completion checklist + external verifier, agentpatterns.ai 2026-07-19): Before declaring `status: complete`, you MUST run `bash tools/verify-nix.sh` and paste its `----- VERIFICATION REPORT -----` output. It checks numerical completion (5 rows with `deps-verified`/`deps-fixed`), evidence strings (`nix flake check` / `nix build` / `nixfmt`), and install-test + battle test table. Exit 1 = NOT COMPLETE -- keep working until exit 0. Do NOT write `status: complete` if verifier fails. Prompt 70-90%, verifier+gate near-100%.
+            VERIFICATION LOOP (MANDATORY - battle-tested 2026: pre-completion checklist + external verifier, agentpatterns.ai 2026-07-19): Before declaring `status: complete`, you MUST run `bash tools/verify-nix.sh` and paste its `----- VERIFICATION REPORT -----` output. It checks numerical completion (one audit row per `ls pkgs/*.nix` package with `deps-verified`/`deps-fixed`/`version-checked`), evidence strings (`nix flake check` / `nix build` / `nixfmt` with PASS), install-test + battle test tables, one `nix-teardown: <pkg> img:sha256:<digest> build PASS run PASS` token per inventory package (fresh nixos/nix container digest, never host-nix), one `gh-rate: <remaining>/<limit> <today-UTC-date>` token-provenance line, one fresh `upstream: <pkg> ... <today-UTC-date>` live-check line per package, and (when pkgs/niri-unstable.nix exists) one `wrap-proof: niri-unstable ...` line proving the wrapper carries xwayland-satellite. Exit 1 = NOT COMPLETE -- keep working until exit 0. Do NOT write `status: complete` if verifier fails. Prompt 70-90%, verifier+gate near-100%.
 
-            CLOSE THE FAILURE ISSUE WHEN FIXED (MANDATORY): After `tools/verify-nix.sh` passes and you have committed `status: complete` with `run_id: $RUN_ID` to `.opencode-relay.md` on `main`, you MUST close any open issue titled `autonomous run failed:*` — it is the record of the previous failure you just fixed. Run `gh api repos/${GITHUB_REPOSITORY}/issues?state=open --jq '.[] | select(.title | startswith("autonomous run failed")) | .number'` to find it, then for each number run `gh issue close <n> --reason completed --comment "Fixed by $RUN_ID ($GITHUB_SHA): verification passed (sweep + docker 5/5 + flake check + nixfmt) and relay is now status: complete. See https://github.com/${GITHUB_REPOSITORY}/actions/runs/$GITHUB_RUN_ID."` . Every fix gets a closing comment with evidence; never leave a fixed failure issue open.
+            CLOSE THE FAILURE ISSUE WHEN FIXED (MANDATORY): After `tools/verify-nix.sh` passes and you have committed `status: complete` with `run_id: $RUN_ID` to `.opencode-relay.md` on `main`, you MUST close any open issue titled `autonomous run failed:*` — it is the record of the previous failure you just fixed. Run `gh api repos/${GITHUB_REPOSITORY}/issues?state=open --jq '.[] | select(.title | startswith("autonomous run failed")) | .number'` to find it, then for each number run `gh issue close <n> --reason completed --comment "Fixed by $RUN_ID ($GITHUB_SHA): verification passed (sweep + docker teardown all pkgs + flake check + nixfmt) and relay is now status: complete. See https://github.com/${GITHUB_REPOSITORY}/actions/runs/$GITHUB_RUN_ID."` . Every fix gets a closing comment with evidence; never leave a fixed failure issue open.
+
+            ISSUE CLASSES (2026-09-22: every issue is AUTO or OWNER-ACL). AUTO (fix+verify+close yourself): nix expression bugs, wrong/stale versions, bad hashes, missing runtime deps, broken wrappers/desktop entries, failed builds, docs, triage replies. OWNER-ACL (only secrets-gated or infra: tokens, outages, upstream withdrawals): comment ONCE per issue per run MAXIMUM, maintain ONE consolidated `needs-owner:` list in .opencode-relay.md updated in place - never repeated "still blocked" spam. A new OWNER-ACL item gets a new issue ONLY if no open issue already tracks it.
 
       - name: Verify completion (external, battle-tested 2026)
         if: always()
