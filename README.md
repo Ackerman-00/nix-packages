@@ -73,8 +73,12 @@ to the rolling `nixcache` release on this repo (same pattern as void-nexus).
 Add it once — `flake update` then fetches binaries, never compiles:
 
 ```nix
+# One rolling tag per package (nixcache-<pkg>); add the ones you use.
 nix.settings = {
-  substituters = [ "https://github.com/Ackerman-00/nix-packages/releases/download/nixcache" ];
+  substituters = [
+    "https://github.com/Ackerman-00/nix-packages/releases/download/nixcache-niri-unstable"
+    "https://github.com/Ackerman-00/nix-packages/releases/download/nixcache-xwayland-satellite-unstable"
+  ];
   trusted-public-keys = [ "nixcache:5i/lXrpYqlfr2c6eNC6aieaaS8CvZMzDbGB2dhlz3qI=" ];
 };
 ```

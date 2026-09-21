@@ -290,18 +290,19 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Nix-native needs-build check (no template parsing): evaluate each
-          # rev-pinned output path and probe its narinfo on the rolling tag.
-          # Missing = dispatch the relay with the full queue; each run builds
-          # ONE package then relays, so no run can hit the 6h limit twice.
+          # Nix-native needs-build check (no template parsing, no curl loops):
+          # evaluate each rev-pinned output path and ask Nix itself whether
+          # the per-package rolling tag already has it (`path-info --store`,
+          # parallel + mass-query batched per the manual). Missing = dispatch
+          # the relay with the full queue; each run builds ONE package then
+          # relays, so no run can hit the 6h limit twice.
           NEEDS=""
           for pkg in niri-unstable xwayland-satellite-unstable; do
             OUT=$(nix eval --raw ".#packages.x86_64-linux.$pkg.outPath" 2>/dev/null || true)
-            h=$(basename "$OUT" | cut -d- -f1)
-            if [ -z "$h" ]; then
+            if [ -z "$OUT" ]; then
               echo "  $pkg: eval failed, queuing anyway"
               NEEDS="$NEEDS $pkg"
-            elif curl -sfI --max-time 15 "https://github.com/${{ github.repository }}/releases/download/nixcache/$h.narinfo" >/dev/null 2>&1; then
+            elif nix path-info --store "https://github.com/${{ github.repository }}/releases/download/nixcache-$pkg" "$OUT" >/dev/null 2>&1; then
               echo "  $pkg: binary published, skipping"
             else
               echo "  $pkg: binary missing, queuing"
