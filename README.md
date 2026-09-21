@@ -64,6 +64,8 @@ nix run github:Ackerman-00/nix-packages#rootapp
 nix run github:Ackerman-00/nix-packages#zen-browser
 nix run github:Ackerman-00/nix-packages#niri-unstable
 nix run github:Ackerman-00/nix-packages#xwayland-satellite-unstable
+nix run github:Ackerman-00/nix-packages#mixtapes
+nix run github:Ackerman-00/nix-packages#splayer-next
 ```
 
 ## Binary cache (free, no Cachix)
@@ -81,7 +83,4 @@ nix.settings = {
   ];
   trusted-public-keys = [ "nixcache:5i/lXrpYqlfr2c6eNC6aieaaS8CvZMzDbGB2dhlz3qI=" ];
 };
-```
-nix run github:Ackerman-00/nix-packages#mixtapes
-nix run github:Ackerman-00/nix-packages#splayer-next
 ```

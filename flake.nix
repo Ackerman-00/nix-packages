@@ -32,7 +32,9 @@
           rootapp = pkgs.callPackage ./pkgs/rootapp.nix { inherit lib; };
           mixtapes = pkgs.callPackage ./pkgs/mixtapes.nix { inherit lib; };
           splayer-next = pkgs.callPackage ./pkgs/splayer-next.nix { inherit lib; };
-          xwayland-satellite-unstable = pkgs.callPackage ./pkgs/xwayland-satellite-unstable.nix { inherit lib; };
+          xwayland-satellite-unstable = pkgs.callPackage ./pkgs/xwayland-satellite-unstable.nix {
+            inherit lib;
+          };
           niri-unstable = pkgs.callPackage ./pkgs/niri-unstable.nix {
             inherit lib;
             xwayland-satellite-unstable = xwayland-satellite-unstable;
