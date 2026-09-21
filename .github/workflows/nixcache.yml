@@ -1,12 +1,8 @@
 name: Nix Binary Cache (rolling release)
 
-# Void-nexus build.yml pattern, adapted for Nix: CI compiles the rev-pinned
-# source builds, signs them, publishes a dumb-HTTP binary cache layout
-# (nix-cache-info + .narinfo + .nar) as assets on the rolling `nixcache` tag,
-# and garbage-collects superseded files. Users add the release URL as a
-# substituter + the public key (nixcache.pub in repo root) and get binaries.
-# NO local builds, NO paid cache. Compiling happens HERE, on schedule/push.
 on:
+  schedule:
+    - cron: '20 */3 * * *'   # Every 3 hours at :20 - middle between update.yml (:00) and opencode-schedule (:10), catches anything push-trigger missed
   push:
     paths:
       - 'pkgs/niri-unstable.nix'
