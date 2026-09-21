@@ -51,9 +51,12 @@ jobs:
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes fetch-closure
-
-      - name: Magic Nix Cache (CI speed, free)
-        uses: DeterminateSystems/magic-nix-cache-action@main
+            # NOTE (2026-09-22, owner decision): NO binary substituters here,
+            # NO action caches. Every CI build is a full honest compile from
+            # scratch - slow is fine. Skipping already-published revs is
+            # handled by the needs-build gate below (narinfo probe), not by
+            # caches. Failures go red and the opencode-scheduler agent fixes
+            # them; that loop is the reliability mechanism, not caching.
 
       - name: Parse package queue (one package per run, relay the rest)
         run: |
@@ -65,7 +68,29 @@ jobs:
           echo "PACKAGE_LIST=$PKGS" >> "$GITHUB_ENV"
           echo "queue: $PKGS -> this run builds: ${ARR[0]}"
 
+      - name: Needs-build gate (skip published revs, never recompile pointlessly)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # The 3h schedule and push triggers default to the full queue, but a
+          # published rev must NOT recompile: evaluate this target's outPath
+          # and probe its narinfo on the rolling tag. Published (and not
+          # force-rebuild) => skip build+publish for this target, STILL relay
+          # the remainder. Missing => full honest compile below.
+          pkg="${{ env.TARGET_PKG }}"
+          OUT=$(nix eval --raw ".#packages.x86_64-linux.$pkg.outPath" 2>/dev/null || true)
+          h=$(basename "$OUT" | cut -d- -f1)
+          if [ "${{ github.event.inputs.force_rebuild }}" != "true" ] && [ -n "$h" ] \
+            && curl -sfI --max-time 20 "https://github.com/${{ github.repository }}/releases/download/nixcache/$h.narinfo" >/dev/null 2>&1; then
+            echo ">>> $pkg ($h) already published - skipping build, relaying remainder"
+            echo "SKIP_TARGET=true" >> "$GITHUB_ENV"
+          else
+            echo ">>> $pkg needs build (missing from release or forced)"
+            echo "SKIP_TARGET=false" >> "$GITHUB_ENV"
+          fi
+
       - name: Resolve placeholder hashes (self-heal)
+        if: env.SKIP_TARGET != 'true'
         run: |
           set -euo pipefail
           # A run must NEVER die on unresolved hashes: if update.yml has not
@@ -97,7 +122,7 @@ jobs:
             fi
           fi
           sed -i 's|cargoHash = "sha256-[^"]*"|cargoHash = ""|; s|cargoHash = lib.fakeHash|cargoHash = ""|' "$f"
-          GOT=$(nix build ".#packages.x86_64-linux.$pkg" --print-out-paths 2>&1 | grep -oP 'got:\s*\Ksha256-[A-Za-z0-9+/=]+' | head -1 || true)
+          GOT=$(nix build ".#packages.x86_64-linux.$pkg" --print-out-paths 2>&1 | grep -oP -m1 'got:\s*\Ksha256-[A-Za-z0-9+/=]+' || true)
           if [ -z "$GOT" ]; then
             echo "::error::$pkg hash self-heal failed - update.yml will retry next cycle"
             git checkout -- "$f"
@@ -113,6 +138,7 @@ jobs:
           git push origin main || echo "::warning::hash-commit push failed, build continues in-worktree"
 
       - name: Build target package
+        if: env.SKIP_TARGET != 'true'
         run: |
           set -euo pipefail
           echo ">>> building ${{ env.TARGET_PKG }}"
@@ -128,6 +154,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Sign closure (or warn-only without key)
+        if: env.SKIP_TARGET != 'true'
         env:
           NIX_SIGNING_KEY: ${{ secrets.NIX_SIGNING_KEY }}
         run: |
@@ -174,6 +201,11 @@ jobs:
           # Hashes (FileHash/NarHash/Sig) are content-based, unaffected.
           mv nixcache-stage/nar/* nixcache-stage/ 2>/dev/null || true
           rmdir nixcache-stage/nar 2>/dev/null || true
+          # Drop build-trace-v2/ (Nix ≥2.33 memoization JSON, per binary-cache
+          # manual): it lives in a SUBDIR that flat release assets cannot
+          # represent, and it is optional cache metadata - narinfos + nars
+          # alone are sufficient for substitution. Uploading it fails the job.
+          rm -rf nixcache-stage/build-trace-v2
           sed -i 's|^URL: nar/|URL: |' nixcache-stage/*.narinfo
           # self-verify: every narinfo we ship must carry our Sig
           missing=$(grep -L "^Sig: " nixcache-stage/*.narinfo 2>/dev/null || true)
@@ -209,14 +241,6 @@ jobs:
             return 1
           }
           existing=$(gh release view nixcache -R "$REPO" --json assets --jq '.assets[].name' || true)
-          # Union old manifest with this run's files: concurrent/alternating
-          # runs must NEVER garbage-collect each other's packages.
-          gh release download nixcache -R "$REPO" -p manifest.txt -D /tmp/oldmanifest 2>/dev/null || true
-          if [ -f /tmp/oldmanifest/manifest.txt ]; then
-            cat /tmp/oldmanifest/manifest.txt manifest-new.txt | sort -u > manifest.txt
-          else
-            cp manifest-new.txt manifest.txt
-          fi
           while read -r f; do
             [ -z "$f" ] && continue
             if [ "${{ github.event.inputs.force_rebuild }}" != "true" ] \
@@ -226,12 +250,25 @@ jobs:
             fi
             retry_upload "nixcache-stage/$f"
           done < manifest-new.txt
+          # DESIRED-STATE (2026-09-22): nixcache-state/<pkg>.txt in git is the
+          # source of truth for "necessary". This run rewrites its target's
+          # file with exactly the files published for the CURRENT rev; the
+          # union over all state files is what the release must contain.
+          # Anything else older than this run is a superseded rev and dies.
+          # Strict serialization (queue: max) makes read-modify-write safe.
+          # (The old union-with-release-manifest approach could never clean:
+          # superseded files stayed listed forever. Never go back to it.)
+          mkdir -p nixcache-state
+          cp manifest-new.txt "nixcache-state/${{ env.TARGET_PKG }}.txt"
+          cat nixcache-state/*.txt | sort -u > manifest.txt
           retry_upload "manifest.txt"
-          echo ">>> GC: purging assets outside the union manifest"
-          # Time guard: only delete assets that predate THIS run. A concurrent
-          # run's fresh uploads are never deleted even if absent from our
-          # union snapshot (its manifest merge covers them on its own pass).
-          RUN_START=$(date -u +%FT%TZ -d "@$(( $(date +%s) - 600 ))" 2>/dev/null || date -u -v-10M +%FT%TZ)
+          git config user.name "opencode-agent[bot]"
+          git config user.email "41898282+opencode-agent[bot]@users.noreply.github.com"
+          git add nixcache-state/
+          git commit -m "chore: nixcache desired-state for ${{ env.TARGET_PKG }}" || true
+          git pull --rebase origin main 2>/dev/null || true
+          git push origin main || echo "::warning::state push failed - GC still runs off the union just computed"
+          echo ">>> GC: release keeps ONLY current-rev files"
           gh release view nixcache -R "$REPO" --json assets \
             --jq '.assets[] | "\(.name) \(.createdAt)"' 2>/dev/null | while read -r asset created; do
             [ -z "$asset" ] && continue

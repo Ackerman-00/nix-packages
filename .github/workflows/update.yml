@@ -131,7 +131,7 @@ jobs:
           PYEOF
             # 2. cargoHash via the standard error trick (never guessed)
             sed -i 's|cargoHash = "sha256-[^"]*"|cargoHash = ""|; s|cargoHash = lib.fakeHash|cargoHash = ""|' "$f"
-            GOT=$(nix build ".#packages.x86_64-linux.$1" --print-out-paths 2>&1 | grep -oP 'got:\s*\Ksha256-[A-Za-z0-9+/=]+' | head -1 || true)
+            GOT=$(nix build ".#packages.x86_64-linux.$1" --print-out-paths 2>&1 | grep -oP -m1 'got:\s*\Ksha256-[A-Za-z0-9+/=]+' || true)
             if [ -z "$GOT" ]; then
               echo "  WARN: $1 no cargoHash captured (build may have failed early) - reverting file"
               git checkout -- "$f"
@@ -186,17 +186,18 @@ jobs:
               continue
             fi
 
-            # Fast-path: for GitHub-releases packages, compare the atom feed
-            # top tag against the pinned version BEFORE paying for a full
-            # flake eval inside nix-update. Equality means nix-update would
-            # no-op ("already X") - skip it. Anything else falls through to
+            # Fast-path: for GitHub-releases packages, compare the latest
+            # release tag (authenticated gh api, cheap) against the pinned
+            # version BEFORE paying for a full flake eval inside nix-update.
+            # Equality means nix-update would no-op ("already X") - skip it.
+            # Anything else (including API failure) falls through to
             # nix-update (the authority). Never skip on fetch failure.
             if [ -n "$O" ] && [ -n "$R" ]; then
               CURV=$(grep -oP '^\s*version = "\K[^"]+' "$f" | head -1 || true)
-              ATOMTAG=$(curl -sL --max-time 20 "https://github.com/$O/$R/releases.atom" 2>/dev/null | grep -oP '<title>\Kv[^<]*|(?<=<title>)[^<]*' | head -2 | tail -1 | tr -d ' \t\n\r' || true)
-              ATOMVER=${ATOMTAG#v}
-              if [ -n "$CURV" ] && [ -n "$ATOMVER" ] && [ "$CURV" = "$ATOMVER" ]; then
-                echo ">>> $name ($CURV == atom $ATOMTAG, skipping nix-update eval)"
+              LATETAG=$(gh api "repos/$O/$R/releases/latest" --jq .tag_name 2>/dev/null || true)
+              LATEVER=${LATETAG#v}
+              if [ -n "$CURV" ] && [ -n "$LATEVER" ] && [ "$CURV" = "$LATEVER" ]; then
+                echo ">>> $name ($CURV == latest $LATETAG, skipping nix-update eval)"
                 continue
               fi
             fi
@@ -278,7 +279,8 @@ jobs:
             echo "::warning::stale multi-arch hash(es) repaired - see log above"
           fi
 
-          # Commit (only if something changed; exit non-zero if any package failed so the run is red)
+          # Commit (only if something changed; per-package failures are
+          # warnings handled next cycle / by the schedule agent, never red)
           if [ "$UPDATED" -eq 1 ]; then
             git config user.name "opencode-agent[bot]"
             git config user.email "41898282+opencode-agent[bot]@users.noreply.github.com"
