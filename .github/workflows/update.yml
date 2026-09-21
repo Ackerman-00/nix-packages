@@ -27,9 +27,6 @@ jobs:
       - name: Install nix-update
         run: nix profile install nixpkgs#nix-update
 
-      - name: Magic Nix Cache (CI speed, free)
-        uses: DeterminateSystems/magic-nix-cache-action@main
-
       - name: Update Packages
         run: |
           set -euo pipefail
