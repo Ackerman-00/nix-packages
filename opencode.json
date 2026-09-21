@@ -10,7 +10,9 @@
   ],
   "providers": {
     "opencode": {
-      "env": ["OPENCODE_API_KEY"],
+      "env": [
+        "OPENCODE_API_KEY"
+      ],
       "settings": {
         "apiKey": "{env:OPENCODE_API_KEY}"
       },
@@ -21,6 +23,14 @@
           "limit": {
             "context": 1048576,
             "output": 131072
+          }
+        },
+        "mimo-v2.6-flash-free": {
+          "name": "MiMo-V2.6-Flash Free",
+          "modelID": "mimo-v2.6-flash-free",
+          "limit": {
+            "context": 200000,
+            "output": 32000
           }
         },
         "mimo-v2.5-free": {

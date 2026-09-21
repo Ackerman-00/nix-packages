@@ -115,7 +115,7 @@ jobs:
         shell: bash
         run: |
           export PATH="$HOME/.opencode/bin:$PATH"
-          for model in "opencode/muse-spark-1.3-contributor-free" "opencode/mimo-v2.5-free" "opencode/deepseek-v4-flash-free" "opencode/muse-spark-1.2-contributor-free" "opencode/big-pickle" "opencode/nemotron-3.5-lightning-free" "opencode/nemotron-3-ultra-free" "opencode/ling-3.0-flash-fin-free"; do
+          for model in "opencode/muse-spark-1.3-contributor-free" "opencode/mimo-v2.6-flash-free" "opencode/mimo-v2.5-free" "opencode/deepseek-v4-flash-free" "opencode/muse-spark-1.2-contributor-free" "opencode/big-pickle" "opencode/nemotron-3.5-lightning-free" "opencode/nemotron-3-ultra-free" "opencode/ling-3.0-flash-fin-free"; do
             echo "=== opencode run attempt with $model ==="
             if MODEL="$model" opencode run --standalone --model "$model" --agent build "$PROMPT"; then
               git fetch origin main >/dev/null 2>&1
