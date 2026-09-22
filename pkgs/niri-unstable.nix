@@ -145,6 +145,13 @@ rustPlatform.buildRustPackage (finalAttrs: {
   # 0-unstable version and fail - the flake's own build+smoke is the check.
   doInstallCheck = false;
 
+  passthru = {
+    # REQUIRED by services.displayManager.sessionPackages ("package with
+    # provided sessions" type): without this, NixOS rejects the package as a
+    # login session (seen live 2026-09-22). Matches nixpkgs' own niri.
+    providedSessions = [ "niri" ];
+  };
+
   meta = {
     description = "Scrollable-tiling Wayland compositor (latest upstream commit)";
     homepage = "https://github.com/niri-wm/niri";
