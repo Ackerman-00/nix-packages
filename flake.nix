@@ -37,7 +37,9 @@
           };
           niri-unstable = pkgs.callPackage ./pkgs/niri-unstable.nix { inherit lib; };
           umbriel-unstable = pkgs.callPackage ./pkgs/umbriel-unstable.nix { inherit lib; };
-          xdg-desktop-portal-umbriel-unstable = pkgs.callPackage ./pkgs/xdg-desktop-portal-umbriel-unstable.nix { inherit lib; };
+          xdg-desktop-portal-umbriel-unstable =
+            pkgs.callPackage ./pkgs/xdg-desktop-portal-umbriel-unstable.nix
+              { inherit lib; };
         in
         {
           zen-browser = zen-browser;

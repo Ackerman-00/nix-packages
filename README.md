@@ -43,7 +43,7 @@ outputs = { self, nixpkgs, ... } @ inputs: {
           inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.niri-unstable
           inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.xwayland-satellite-unstable
           inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.umbriel-unstable
-            inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.xdg-desktop-portal-umbriel-unstable
+          inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.xdg-desktop-portal-umbriel-unstable
           inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.mixtapes
           inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.splayer-next
         ];

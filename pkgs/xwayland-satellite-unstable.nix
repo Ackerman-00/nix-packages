@@ -8,7 +8,6 @@
   makeBinaryWrapper,
   pkg-config,
   rustPlatform,
-  stdenv,
   xwayland,
   withSystemd ? true,
 }:

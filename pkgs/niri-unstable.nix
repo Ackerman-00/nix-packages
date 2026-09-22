@@ -19,7 +19,6 @@
   seatd,
   stdenv,
   systemd,
-  versionCheckHook,
   wayland,
   withDbus ? true,
   withScreencastSupport ? true,

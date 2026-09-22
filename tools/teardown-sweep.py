@@ -725,6 +725,14 @@ def parse_nix(pnix):
             h = None
         if m.group(1) == "fetchFromGitHub":
             rm = re.search(r'rev\s*=\s*"([^"]+)"', block)
+            if rm is None and re.search(r"\binherit\s+rev\b", block):
+                # `inherit rev;` -- the binding lives outside the fetch block
+                # (repo convention: `let rev = "..."; in ... fetchFromGitHub { inherit rev; };`).
+                # Resolve the file-level binding instead of false-failing as
+                # "no source URL"; the pin-vs-HEAD check uses the same rev.
+                fm = re.search(r'rev\s*=\s*"([^"]+)"', content)
+                if fm:
+                    rm = fm
             om = re.search(r'owner\s*=\s*"([^"]+)"', block)
             nm = re.search(r'repo\s*=\s*"([^"]+)"', block)
             if rm and om and nm:

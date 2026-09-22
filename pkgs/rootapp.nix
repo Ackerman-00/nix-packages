@@ -35,7 +35,7 @@ pkgs.appimageTools.wrapType2 {
   '';
   meta = {
     homepage = "https://rootapp.com";
-    description = "Root Field Service Management";
+    description = "Community platform with chat, task tracking, and extensible apps";
     license = lib.licenses.unfree;
     platforms = lib.platforms.linux;
     mainProgram = "rootapp";
