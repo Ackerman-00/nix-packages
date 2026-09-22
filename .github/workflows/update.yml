@@ -314,6 +314,13 @@ jobs:
           for p in $REVPKGS; do
             [ "$p" = "niri-unstable" ] || QUEUE="$QUEUE $p"
           done
+          # FORCE OVERRIDE: a checked force_rebuild box means rebuild
+          # everything, no probing. Without this, an all-published state
+          # dispatches nothing and the flag silently dies (seen live).
+          if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
+            echo "force_rebuild checked - queuing entire rev-pinned set: $QUEUE"
+            NEEDS="$QUEUE"
+          else
           NEEDS=""
           for pkg in $QUEUE; do
             OUT=$(nix eval --raw ".#packages.x86_64-linux.$pkg.outPath" 2>/dev/null || true)
@@ -327,6 +334,7 @@ jobs:
               NEEDS="$NEEDS $pkg"
             fi
           done
+          fi
           NEEDS=$(echo "$NEEDS" | xargs)
           if [ -n "$NEEDS" ]; then
             echo "dispatching relay: $NEEDS"
