@@ -2,12 +2,12 @@
 
 let
   pname = "rootapp";
-  version = "0.9.132";
+  version = "0.9.134";
 
   archives = {
     x86_64-linux = pkgs.fetchurl {
       url = "https://installer.rootapp.com/installer/Linux/X64/Root.AppImage";
-      hash = "sha256-HuhB1WhUDnjH4E/SyNXSIFPkJL1eTTLHwU+eA82Cp78=";
+      hash = "sha256-nbSgAsPWC99i6xajEyM4kJMbZ9kIv8Ev8iYFGrr5qgM=";
     };
     aarch64-linux = pkgs.fetchurl {
       url = "https://installer.rootapp.com/installer/Linux/Arm64/Root.AppImage";
