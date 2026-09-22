@@ -64,6 +64,14 @@ stdenv.mkDerivation {
 
   mesonBuildType = "release";
 
+  # Upstream meson installs the daemon to libexecdir only (nixpkgs' expression
+  # inherits that), so `nix run .#pkg` had no bin/ entry to execute. Expose it
+  # so the advertised `nix run` path in README works.
+  postInstall = ''
+    mkdir -p $out/bin
+    ln -s $out/libexec/xdg-desktop-portal-umbriel $out/bin/xdg-desktop-portal-umbriel
+  '';
+
   meta = {
     homepage = "https://github.com/noctalia-dev/xdg-desktop-portal-umbriel";
     description = "xdg-desktop-portal backend for the Umbriel compositor (latest upstream commit)";
