@@ -33,8 +33,8 @@ rustPlatform.buildRustPackage (finalAttrs: {
   src = fetchFromGitHub {
     owner = "niri-wm";
     repo = "niri";
-    rev = "9a35d3774a7ff1acdce07fde05bdc94dfa5a0258";
-    hash = "sha256-2QxkCh+LWIS0mWF82ptEvM5/FtdPBrdDjRyahT6K3fs=";
+    rev = "5f4469b6a992492cf7221b269e9379f42e737649";
+    hash = "sha256-3nX7BEcI3swElm9J5GycBkyglLYWumtKcIz9eMuo+Ug=";
   };
 
   outputs = [
@@ -115,7 +115,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
 
     # Upstream wiki (Packaging-niri): set the commit hash manually when no
     # git checkout is available. Rewritten by update.yml on every bump.
-    NIRI_BUILD_COMMIT = "9a35d37";
+    NIRI_BUILD_COMMIT = "5f4469b";
   };
 
   checkFlags = [ "--skip=::egl" ];
