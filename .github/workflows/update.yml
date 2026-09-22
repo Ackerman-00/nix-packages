@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: '0 */6 * * *'   # Every 6 hours (opencode-schedule follows 10 min later at :10)
   workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: 'Force nixcache rebuild even if binaries are published'
+        required: false
+        default: 'false'
+        type: boolean
 
 jobs:
   update-flake:
@@ -322,7 +328,7 @@ jobs:
                 --ref "${GITHUB_REF_NAME}" \
                 --repo "${{ github.repository }}" \
                 -f packages="$NEEDS" \
-                -f force_rebuild="false"; then
+                -f force_rebuild="${{ github.event.inputs.force_rebuild || 'false' }}"; then
                 ok=1
                 break
               fi
