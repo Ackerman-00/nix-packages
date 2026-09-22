@@ -24,8 +24,6 @@
   jemalloc,
   tomlplusplus,
   nlohmann_json,
-  dbus,
-  pipewire,
   systemd,
 }:
 
@@ -74,8 +72,6 @@ stdenv.mkDerivation {
     jemalloc
     cairo
     pango
-    dbus
-    pipewire
     systemd
   ];
 

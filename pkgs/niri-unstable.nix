@@ -1,12 +1,14 @@
 # niri-unstable: latest upstream commit, tracked by update.yml.
 {
   lib,
+  cairo,
   dbus,
   eudev,
   fetchFromGitHub,
   installShellFiles,
   libdisplay-info_0_3,
   libglvnd,
+  libGL,
   libinput,
   libxkbcommon,
   libgbm,
@@ -59,8 +61,10 @@ rustPlatform.buildRustPackage (finalAttrs: {
   ];
 
   buildInputs = [
+    cairo
     libdisplay-info_0_3
     libglvnd # For libEGL
+    libGL
     libinput
     libxkbcommon
     libgbm
@@ -117,6 +121,13 @@ rustPlatform.buildRustPackage (finalAttrs: {
     # git checkout is available. Rewritten by update.yml on every bump.
     NIRI_BUILD_COMMIT = "5f4469b";
   };
+
+  # Upstream flake + nixpkgs both export this: since niri commit 771ea1e the
+  # test suite runs a real compositor instance (mock backend) that creates a
+  # socket file in the runtime dir; the sandbox has none unless we make one.
+  preCheck = ''
+    export XDG_RUNTIME_DIR="$(mktemp -d)"
+  '';
 
   checkFlags = [ "--skip=::egl" ];
 
