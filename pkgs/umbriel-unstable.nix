@@ -41,8 +41,8 @@ stdenv.mkDerivation {
   src = fetchFromGitHub {
     owner = "noctalia-dev";
     repo = "umbriel";
-    rev = "c6d7d57607845953a4eb431918e7792ed4b92d8e";
-    hash = "sha256-EFSp61Uhu0rCviE8UeuqBt9ILhex+CUg0AxjmY+LSpQ=";
+    rev = "51e6528ecf3d787531d9f8e536df24196edea17d";
+    hash = "sha256-x6CjlsKIaZ47do3S5b7X6SFKCqxhL/2uExXiP3di9ig=";
   };
 
   nativeBuildInputs = [
@@ -86,7 +86,7 @@ stdenv.mkDerivation {
     # practice): `umbriel --version` then prints base version + real commit.
     # Rewritten by update.yml on every bump.
     substituteInPlace meson.build \
-      --replace-fail "fallback: 'unknown'" "fallback: 'c6d7d57'"
+      --replace-fail "fallback: '51e6528'" "fallback: 'c6d7d57'"
   '';
 
   postInstall = ''

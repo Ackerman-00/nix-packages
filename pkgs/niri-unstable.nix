@@ -28,13 +28,13 @@ rustPlatform.buildRustPackage (finalAttrs: {
   pname = "niri-unstable";
   # nixpkgs git-snapshot convention: sorts below any future real release,
   # so the upgrade path back to stable stays clean.
-  version = "0-unstable-2026-09-21";
+  version = "0-unstable-2026-09-22";
 
   src = fetchFromGitHub {
     owner = "niri-wm";
     repo = "niri";
-    rev = "8be4c6df68ddef2afd4ccdde7f27dbc782c30603";
-    hash = "sha256-z2NJYe1zfVoFQKbkowMtBEr+m8al8oT3JVimA9N9Xow=";
+    rev = "9a35d3774a7ff1acdce07fde05bdc94dfa5a0258";
+    hash = "sha256-2QxkCh+LWIS0mWF82ptEvM5/FtdPBrdDjRyahT6K3fs=";
   };
 
   outputs = [
@@ -115,7 +115,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
 
     # Upstream wiki (Packaging-niri): set the commit hash manually when no
     # git checkout is available. Rewritten by update.yml on every bump.
-    NIRI_BUILD_COMMIT = "8be4c6d";
+    NIRI_BUILD_COMMIT = "9a35d37";
   };
 
   checkFlags = [ "--skip=::egl" ];
