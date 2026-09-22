@@ -1,16 +1,4 @@
-# umbriel-unstable: latest upstream commit of umbriel
-# (https://github.com/noctalia-dev/umbriel), tracked by update.yml
-# (rust_rev_update: bumps rev + hash + version together; meson project, so
-# the cargoHash steps no-op via the cargoHash guard).
-#
-# Vendored (not overrideAttrs): only the pin lines move per bump, insulating
-# us from packaging churn elsewhere. Shape = nixpkgs' expression (Hydra-proven:
-# strictDeps, __structuredAttrs, mesonInstallFlags --skip-subprojects, doCheck)
-# UNION upstream's own nix/package.nix inputs (dbus, pipewire, systemd -
-# ground truth at HEAD; extra libs are harmless, missing libs break builds).
-# NO xwayland-satellite wrap by design (2026-09-22, upstream contract):
-# umbriel docs require satellite "installed and on PATH" - it is an OPTIONAL
-# external companion discovered at runtime, never a hardcoded build input.
+# umbriel-unstable: latest upstream commit, tracked by update.yml.
 {
   lib,
   stdenv,
@@ -92,6 +80,15 @@ stdenv.mkDerivation {
 
   mesonInstallFlags = [ "--skip-subprojects" ];
 
+  postPatch = ''
+    # Sandbox has no .git, so meson's vcs_tag falls back to 'unknown'.
+    # Inject the pinned short rev instead (mirrors niri's NIRI_BUILD_COMMIT
+    # practice): `umbriel --version` then prints base version + real commit.
+    # Rewritten by update.yml on every bump.
+    substituteInPlace meson.build \
+      --replace-fail "fallback: 'unknown'" "fallback: 'c6d7d57'"
+  '';
+
   postInstall = ''
     if [ -f "$out/share/wayland-sessions/umbriel.desktop" ]; then
       substituteInPlace "$out/share/wayland-sessions/umbriel.desktop" \
@@ -101,9 +98,6 @@ stdenv.mkDerivation {
 
   doCheck = true;
 
-  # Synthetic 0-unstable version can never match upstream tags; the flake's
-  # own build+smoke in CI is the version check (same rationale as nixpkgs'
-  # doInstallCheck = false for untagged umbriel).
   doInstallCheck = false;
 
   passthru = {

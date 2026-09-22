@@ -153,6 +153,9 @@ jobs:
             if [ "$1" = "niri-unstable" ]; then
               sed -i "s|NIRI_BUILD_COMMIT = \"[0-9a-f]*\"|NIRI_BUILD_COMMIT = \"$SHORT\"|" "$f"
             fi
+            if [ "$1" = "umbriel-unstable" ]; then
+              sed -i "s|fallback: '[^']*'|fallback: '$SHORT'|" "$f"
+            fi
             # 4. BUILD GATE: full compile must exit 0 or the bump is reverted
             if nix build ".#packages.x86_64-linux.$1" --print-out-paths >/dev/null 2>&1; then
               UPDATED=1

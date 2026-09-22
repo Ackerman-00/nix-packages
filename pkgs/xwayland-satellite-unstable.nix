@@ -1,14 +1,4 @@
-# xwayland-satellite-unstable: latest upstream commit of xwayland-satellite
-# (https://github.com/Supreeeme/xwayland-satellite), tracked by update.yml
-# (rust_rev_update: bumps rev + hash + cargoHash + version together).
-#
-# Vendored (not overrideAttrs): rustPlatform.buildRustPackage consumes src +
-# cargoHash at call time to build its vendor derivation, so post-hoc overrides
-# silently keep the OLD vendor hash. A full expression also insulates us from
-# upstream-packaging churn: only these 4 lines move per bump.
-# Shape verified 2026-09-22 against BOTH nixpkgs (Hydra-proven) and upstream's
-# README (Xwayland>=23.1, xcb, xcb-util-cursor; systemd+fontconfig optional,
-# defaults off). niri-unstable wraps THIS package onto its PATH.
+# xwayland-satellite-unstable: latest upstream commit, tracked by update.yml.
 {
   lib,
   fetchFromGitHub,
@@ -61,7 +51,6 @@ rustPlatform.buildRustPackage {
       --replace-fail '/usr/local/bin/xwayland-satellite' "$out/bin/xwayland-satellite"
   '';
 
-  # All integration tests require a running display server
   doCheck = false;
 
   postInstall = ''

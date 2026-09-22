@@ -1,17 +1,4 @@
-# niri-unstable: latest upstream commit of niri (https://github.com/niri-wm/niri),
-# tracked by update.yml (rust_rev_update: bumps rev + hash + cargoHash +
-# version + NIRI_BUILD_COMMIT together).
-#
-# Vendored (not overrideAttrs): rustPlatform.buildRustPackage consumes src +
-# cargoHash at call time to build its vendor derivation, so post-hoc overrides
-# silently keep the OLD vendor hash. A full expression also insulates us from
-# packaging churn elsewhere: only the pin lines move per bump.
-# Shape verified 2026-09-22 against BOTH nixpkgs' expression (Hydra-proven:
-# libglvnd/wayland/eudev split, versionCheckHook) and upstream's own flake.nix
-# (community-maintained in-repo: cairo + libGL, NIRI_BUILD_COMMIT = revision,
-# XDG_RUNTIME_DIR preCheck). Where they disagree the build decides: this file
-# follows the nixpkgs shape (proven to compile) + upstream's NIRI_BUILD_COMMIT
-# practice (their wiki: set the commit hash when no git checkout is available).
+# niri-unstable: latest upstream commit, tracked by update.yml.
 {
   lib,
   dbus,
@@ -113,13 +100,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
       --zsh <($out/bin/niri completions zsh)
   '';
 
-  # No xwayland-satellite wrap by design (2026-09-22, upstream contract):
-  # niri discovers `xwayland-satellite` on PATH at runtime and spawns it
-  # on-demand (docs: Xwayland page, "ensure >= 0.7 is installed and available
-  # in $PATH"). Hard-wrapping one satellite build into niri would pin an
-  # OPTIONAL companion and fight user choice. Install
-  # xwayland-satellite-unstable alongside instead (see README pairing).
-
+  # No satellite wrap: upstream resolves it on PATH at runtime (optional companion).
   env = {
     # Force linking with libEGL and libwayland-client
     # so they can be discovered by `dlopen()`
