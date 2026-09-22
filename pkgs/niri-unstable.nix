@@ -48,7 +48,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
       --replace-fail 'niri' "$out/bin/niri"
   '';
 
-  cargoHash = "sha256-Yqvambc4F7PdGkGxrxp5xD6PqAEAWmMgqOYZRY+TIBA=";
+  cargoHash = "sha256-vtTh+TG6TdX46QydGKaeo50u2qdQf3UkQ50EML+5H9c=";
 
   strictDeps = true;
 

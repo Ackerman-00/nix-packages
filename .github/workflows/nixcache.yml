@@ -2,14 +2,11 @@ name: Nix Binary Cache (rolling release)
 
 on:
   schedule:
-    - cron: '20 */3 * * *'   # Every 3 hours at :20 - middle between update.yml (:00) and opencode-schedule (:10), catches anything push-trigger missed
-  push:
-    paths:
-      - 'pkgs/niri-unstable.nix'
-      - 'pkgs/xwayland-satellite-unstable.nix'
-      - 'flake.nix'
-      - 'flake.lock'
-      - '.github/workflows/nixcache.yml'
+    - cron: '20 */3 * * *'   # Every 3 hours at :20 - middle between update.yml (:00) and opencode-schedule (:10), catches anything the relay missed
+  # NOTE (2026-09-22, owner decision): NO push trigger. Every push touching
+  # these files used to fire a full multi-minute compile with zero consent.
+  # Builds start ONLY via: update.yml dispatch (after a version bump),
+  # the 3h schedule sweep, the relay chain, or manual workflow_dispatch.
   workflow_dispatch:
     inputs:
       force_rebuild:

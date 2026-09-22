@@ -100,10 +100,11 @@ jobs:
           # niri-unstable + xwayland-satellite-unstable + umbriel-unstable track
           # upstream HEAD. METADATA ONLY, never compile here (canonical split:
           # r-ryantm bumps versions, Hydra builds after merge): refresh rev +
-          # src hash + version stamps, commit, push. nixcache.yml (Hydra role)
-          # fills cargoHash via its own build and COMPILE-GATES there; the
-          # schedule agent (reviewer role) fixes anything red. A `nix build`
-          # in this job is a layering violation - 2-3 min metadata, nothing more.
+          # src hash + version stamps + reset cargoHash to lib.fakeHash,
+          # commit, push. nixcache.yml (Hydra role) self-heals fakeHash via
+          # its own build and COMPILE-GATES there; the schedule agent
+          # (reviewer role) fixes anything red. A `nix build` in this job is
+          # a layering violation - 2-3 min metadata, nothing more.
           rust_rev_update() {
             local f="pkgs/$1.nix" O="$2" R="$3"
             local CUR HEAD OUT SRCHASH GOT DATE SHORT
@@ -140,9 +141,15 @@ jobs:
           print("  rev + src hash refreshed")
           PYEOF
             # 2. version stamp + NIRI_BUILD_COMMIT (niri) / fallback (umbriel).
-            # cargoHash is deliberately NOT touched here: nixcache.yml fills
-            # it from its own build (self-heal), which also compile-gates.
+            # cargoHash RESET to lib.fakeHash when present (2026-09-22 fix):
+            # leaving the stale hash went red in nixcache because self-heal
+            # only triggers on fakeHash. Reset forces self-heal next relay;
+            # meson pkgs (no cargoHash line) skip via the grep guard.
             DATE=$(date -u +%F); SHORT=${HEAD:0:7}
+            if grep -q 'cargoHash' "$f"; then
+              sed -i 's|cargoHash = "sha256-[^"]*"|cargoHash = lib.fakeHash|; s|cargoHash = ""|cargoHash = lib.fakeHash|' "$f"
+              echo "  $1: cargoHash reset to lib.fakeHash (nixcache self-heal next)"
+            fi
             sed -i -E "s|^(\\s*)version = \"0-unstable-[^\"]*\"|\\1version = \"0-unstable-$DATE\"|" "$f"
             if [ "$1" = "niri-unstable" ]; then
               sed -i "s|NIRI_BUILD_COMMIT = \"[0-9a-f]*\"|NIRI_BUILD_COMMIT = \"$SHORT\"|" "$f"
@@ -151,7 +158,7 @@ jobs:
             # the short rev from the `rev` binding automatically. (An updater
             # sed here once rewrote the search pattern itself - never again.)
             UPDATED=1
-            echo "  $1: metadata bumped (${CUR:0:12} -> $SHORT); cargoHash + compile gate belong to nixcache.yml"
+            echo "  $1: metadata bumped (${CUR:0:12} -> $SHORT); cargoHash reset for nixcache self-heal + compile gate"
           }
 
           for f in pkgs/*.nix; do
