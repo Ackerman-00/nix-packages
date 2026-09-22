@@ -4,6 +4,12 @@
 * `zen-browser` — Beautifully designed, privacy-focused Firefox fork (tar.xz, x86_64 + aarch64)
 * `niri-unstable` — Scrollable-tiling Wayland compositor, latest upstream commit (source build, x86_64; binary via our cache below)
 * `xwayland-satellite-unstable` — Rootless Xwayland integration, latest upstream commit (source build, x86_64; binary via our cache below)
+* `umbriel-unstable` — Wayland compositor built on wlroots and umbrielfx, latest upstream commit (source build, x86_64; binary via our cache below)
+
+> X11 note (upstream contract): niri and umbriel discover `xwayland-satellite`
+> on PATH at runtime and spawn it on demand - it is an OPTIONAL companion,
+> never bundled. For X11 apps, install `xwayland-satellite-unstable`
+> alongside your compositor; without it, everything native still works.
 * `mixtapes` — Modern, Linux-first YouTube Music player built with GTK4 and Libadwaita (source, x86_64 + aarch64)
 * `splayer-next` — Cross-platform desktop music player with rich lyric support (tar.gz, x86_64 + aarch64)
 
@@ -47,6 +53,7 @@ Pass the inputs to your system configuration and add the desired applications to
             inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.zen-browser
             inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.niri-unstable
             inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.xwayland-satellite-unstable
+            inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.umbriel-unstable
             inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.mixtapes
             inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.splayer-next
           ];
@@ -64,6 +71,7 @@ nix run github:Ackerman-00/nix-packages#rootapp
 nix run github:Ackerman-00/nix-packages#zen-browser
 nix run github:Ackerman-00/nix-packages#niri-unstable
 nix run github:Ackerman-00/nix-packages#xwayland-satellite-unstable
+nix run github:Ackerman-00/nix-packages#umbriel-unstable
 nix run github:Ackerman-00/nix-packages#mixtapes
 nix run github:Ackerman-00/nix-packages#splayer-next
 ```
@@ -80,6 +88,7 @@ nix.settings = {
   substituters = [
     "https://github.com/Ackerman-00/nix-packages/releases/download/nixcache-niri-unstable"
     "https://github.com/Ackerman-00/nix-packages/releases/download/nixcache-xwayland-satellite-unstable"
+    "https://github.com/Ackerman-00/nix-packages/releases/download/nixcache-umbriel-unstable"
   ];
   trusted-public-keys = [ "nixcache:5i/lXrpYqlfr2c6eNC6aieaaS8CvZMzDbGB2dhlz3qI=" ];
 };

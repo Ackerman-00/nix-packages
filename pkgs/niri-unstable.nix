@@ -12,7 +12,6 @@
 # XDG_RUNTIME_DIR preCheck). Where they disagree the build decides: this file
 # follows the nixpkgs shape (proven to compile) + upstream's NIRI_BUILD_COMMIT
 # practice (their wiki: set the commit hash when no git checkout is available).
-# xwayland-satellite-unstable is wrapped onto PATH: niri execs it at runtime.
 {
   lib,
   dbus,
@@ -24,7 +23,6 @@
   libinput,
   libxkbcommon,
   libgbm,
-  makeBinaryWrapper,
   pango,
   pipewire,
   pkg-config,
@@ -37,7 +35,6 @@
   withDbus ? true,
   withScreencastSupport ? true,
   withSystemd ? true,
-  xwayland-satellite-unstable,
 }:
 
 rustPlatform.buildRustPackage (finalAttrs: {
@@ -70,7 +67,6 @@ rustPlatform.buildRustPackage (finalAttrs: {
 
   nativeBuildInputs = [
     installShellFiles
-    makeBinaryWrapper
     pkg-config
     rustPlatform.bindgenHook
   ];
@@ -117,10 +113,12 @@ rustPlatform.buildRustPackage (finalAttrs: {
       --zsh <($out/bin/niri completions zsh)
   '';
 
-  postFixup = ''
-    wrapProgram $out/bin/niri \
-      --prefix PATH : "${lib.makeBinPath [ xwayland-satellite-unstable ]}"
-  '';
+  # No xwayland-satellite wrap by design (2026-09-22, upstream contract):
+  # niri discovers `xwayland-satellite` on PATH at runtime and spawns it
+  # on-demand (docs: Xwayland page, "ensure >= 0.7 is installed and available
+  # in $PATH"). Hard-wrapping one satellite build into niri would pin an
+  # OPTIONAL companion and fight user choice. Install
+  # xwayland-satellite-unstable alongside instead (see README pairing).
 
   env = {
     # Force linking with libEGL and libwayland-client

@@ -75,16 +75,6 @@ if [[ -f "$RELAY" ]]; then
   else
     echo "PASS: all $npkgs packages carry fresh upstream live-check lines"
   fi
-  # WRAP PROOF (2026-09-22): niri execs xwayland-satellite at runtime. If the
-  # package exists in this repo, the relay must prove the wrapper carries it.
-  if [[ -f "pkgs/niri-unstable.nix" ]]; then
-    if ! grep -qiE "wrap-proof: niri-unstable .*xwayland-satellite" "$RELAY"; then
-      echo "FAIL: NOT COMPLETE -- relay missing 'wrap-proof: niri-unstable ...' (grep result/bin/niri wrapper for the xwayland-satellite store path)"
-      FAIL=1
-    else
-      echo "PASS: niri wrap-proof present"
-    fi
-  fi
 else
   echo "FAIL: $RELAY missing"
   FAIL=1

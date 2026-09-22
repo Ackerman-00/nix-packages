@@ -112,9 +112,11 @@ jobs:
               return 0
             fi
             echo "  $1: ${CUR:0:12} -> ${HEAD:0:12}"
-            # 1. fresh src tree hash (fetchGit NAR hash = what fetchFromGitHub wants)
-            OUT=$(nix eval --impure --json --expr "builtins.fetchGit { url = \"https://github.com/$O/$R\"; rev = \"$HEAD\"; }" 2>/dev/null | jq -r .outPath || true)
-            [ -n "$OUT" ] || { echo "  WARN: $1 fetchGit failed"; return 0; }
+            # 1. fresh src tree hash (fetchTree NAR hash = what fetchFromGitHub wants).
+            # NOTE: fetchTree output shape varies by Nix version (path string
+            # vs {outPath,...} object) - the jq handles both, then narHash.
+            OUT=$(nix eval --impure --json --expr "builtins.fetchTree { type = \"github\"; owner = \"$O\"; repo = \"$R\"; rev = \"$HEAD\"; }" 2>/dev/null | jq -r 'if type == "object" then .outPath else . end' || true)
+            [ -n "$OUT" ] && [ "$OUT" != "null" ] || { echo "  WARN: $1 fetchTree failed"; return 0; }
             SRCHASH=$(nix path-info --json --json-format 1 "$OUT" 2>/dev/null | jq -r '.[].narHash' || true)
             [ -n "$SRCHASH" ] && [ "$SRCHASH" != "null" ] || { echo "  WARN: $1 narHash failed"; return 0; }
             python3 - "$f" "$CUR" "$HEAD" "$SRCHASH" <<'PYEOF'
@@ -132,15 +134,19 @@ jobs:
           open(path, "w").write(text)
           print("  src hash refreshed")
           PYEOF
-            # 2. cargoHash via the standard error trick (never guessed)
-            sed -i 's|cargoHash = "sha256-[^"]*"|cargoHash = ""|; s|cargoHash = lib.fakeHash|cargoHash = ""|' "$f"
-            GOT=$(nix build ".#packages.x86_64-linux.$1" --print-out-paths 2>&1 | grep -oP -m1 'got:\s*\Ksha256-[A-Za-z0-9+/=]+' || true)
-            if [ -z "$GOT" ]; then
-              echo "  WARN: $1 no cargoHash captured (build may have failed early) - reverting file"
-              git checkout -- "$f"
-              return 0
+            # 2. cargoHash via the standard error trick (never guessed).
+            # MESON/packages without cargoHash skip this entirely (guard):
+            # running the trick there would compile-then-revert needlessly.
+            if grep -q 'cargoHash' "$f"; then
+              sed -i 's|cargoHash = "sha256-[^"]*"|cargoHash = ""|; s|cargoHash = lib.fakeHash|cargoHash = ""|' "$f"
+              GOT=$(nix build ".#packages.x86_64-linux.$1" --print-out-paths 2>&1 | grep -oP -m1 'got:\s*\Ksha256-[A-Za-z0-9+/=]+' || true)
+              if [ -z "$GOT" ]; then
+                echo "  WARN: $1 no cargoHash captured (build may have failed early) - reverting file"
+                git checkout -- "$f"
+                return 0
+              fi
+              sed -i "s|cargoHash = \"\"|cargoHash = \"$GOT\"|" "$f"
             fi
-            sed -i "s|cargoHash = \"\"|cargoHash = \"$GOT\"|" "$f"
             # 3. version stamp + NIRI_BUILD_COMMIT (niri only)
             DATE=$(date -u +%F); SHORT=${HEAD:0:7}
             sed -i -E "s|^(\\s*)version = \"0-unstable-[^\"]*\"|\\1version = \"0-unstable-$DATE\"|" "$f"
@@ -162,8 +168,10 @@ jobs:
             # rootapp handled above (raw URL, no version to detect)
             [ "$name" = "rootapp" ] && continue
 
-            # Rust overlay pins go STRAIGHT to rust_rev_update (rev + src
-            # hash + cargoHash + build gate, all in CI)
+            # Rust/meson rev-pinned source builds go STRAIGHT to rust_rev_update
+            # (rev + src hash + cargoHash-if-present + build gate, all in CI).
+            # NOTE: name-routed (not auto-derived): mixtapes is also rev-pinned
+            # but tagless-source, handled by git_mode_update below.
             if [ "$name" = "niri-unstable" ]; then
               echo ">>> rust-rev niri-unstable (niri-wm/niri HEAD)"
               rust_rev_update "$name" "niri-wm" "niri"
@@ -172,6 +180,11 @@ jobs:
             if [ "$name" = "xwayland-satellite-unstable" ]; then
               echo ">>> rust-rev xwayland-satellite-unstable (Supreeeme HEAD)"
               rust_rev_update "$name" "Supreeeme" "xwayland-satellite"
+              continue
+            fi
+            if [ "$name" = "umbriel-unstable" ]; then
+              echo ">>> rust-rev umbriel-unstable (noctalia-dev/umbriel HEAD)"
+              rust_rev_update "$name" "noctalia-dev" "umbriel"
               continue
             fi
 
@@ -302,8 +315,16 @@ jobs:
           # parallel + mass-query batched per the manual). Missing = dispatch
           # the relay with the full queue; each run builds ONE package then
           # relays, so no run can hit the 6h limit twice.
+          # Queue = every rev-pinned source build (derived, never hardcoded),
+          # niri-unstable first (owner priority), rest alphabetical.
+          # Today that is niri/xwayland-satellite/umbriel-unstable + mixtapes.
+          REVPKGS=$(grep -l 'rev = "[0-9a-f]\{40\}"' pkgs/*.nix 2>/dev/null | xargs -n1 basename 2>/dev/null | sed 's/\.nix$//' | sort || true)
+          QUEUE="niri-unstable"
+          for p in $REVPKGS; do
+            [ "$p" = "niri-unstable" ] || QUEUE="$QUEUE $p"
+          done
           NEEDS=""
-          for pkg in niri-unstable xwayland-satellite-unstable; do
+          for pkg in $QUEUE; do
             OUT=$(nix eval --raw ".#packages.x86_64-linux.$pkg.outPath" 2>/dev/null || true)
             if [ -z "$OUT" ]; then
               echo "  $pkg: eval failed, queuing anyway"

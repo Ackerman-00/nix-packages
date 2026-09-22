@@ -35,10 +35,8 @@
           xwayland-satellite-unstable = pkgs.callPackage ./pkgs/xwayland-satellite-unstable.nix {
             inherit lib;
           };
-          niri-unstable = pkgs.callPackage ./pkgs/niri-unstable.nix {
-            inherit lib;
-            xwayland-satellite-unstable = xwayland-satellite-unstable;
-          };
+          niri-unstable = pkgs.callPackage ./pkgs/niri-unstable.nix { inherit lib; };
+          umbriel-unstable = pkgs.callPackage ./pkgs/umbriel-unstable.nix { inherit lib; };
         in
         {
           zen-browser = zen-browser;
@@ -46,6 +44,7 @@
           mixtapes = mixtapes;
           splayer-next = splayer-next;
           xwayland-satellite-unstable = xwayland-satellite-unstable;
+          umbriel-unstable = umbriel-unstable;
           niri-unstable = niri-unstable;
         }
         // lib.optionalAttrs (system == "x86_64-linux") {

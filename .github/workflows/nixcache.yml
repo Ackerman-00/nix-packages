@@ -61,7 +61,15 @@ jobs:
       - name: Parse package queue (one package per run, relay the rest)
         run: |
           PKGS="${{ github.event.inputs.packages }}"
-          [ -z "$PKGS" ] && PKGS="niri-unstable xwayland-satellite-unstable"
+          # Default queue = every rev-pinned source build, derived live
+          # (never hardcoded); niri-unstable first, rest alphabetical.
+          if [ -z "$PKGS" ]; then
+            REVPKGS=$(grep -l 'rev = "[0-9a-f]\{40\}"' pkgs/*.nix 2>/dev/null | xargs -n1 basename 2>/dev/null | sed 's/\.nix$//' | sort || true)
+            PKGS="niri-unstable"
+            for p in $REVPKGS; do
+              [ "$p" = "niri-unstable" ] || PKGS="$PKGS $p"
+            done
+          fi
           # shellcheck disable=SC2206
           ARR=($PKGS)
           echo "TARGET_PKG=${ARR[0]}" >> "$GITHUB_ENV"
@@ -111,8 +119,8 @@ jobs:
           O=$(grep -oP 'owner = "\K[^"]+' "$f" | head -1)
           R=$(grep -oP 'repo = "\K[^"]+' "$f" | head -1)
           REV=$(grep -oP 'rev = "\K[0-9a-f]{40}' "$f" | head -1)
-          OUT=$(nix eval --impure --json --expr "builtins.fetchGit { url = \"https://github.com/$O/$R\"; rev = \"$REV\"; }" 2>/dev/null | jq -r .outPath || true)
-          if [ -n "$OUT" ]; then
+          OUT=$(nix eval --impure --json --expr "builtins.fetchTree { type = \"github\"; owner = \"$O\"; repo = \"$R\"; rev = \"$REV\"; }" 2>/dev/null | jq -r 'if type == "object" then .outPath else . end' || true)
+          if [ -n "$OUT" ] && [ "$OUT" != "null" ]; then
             SRCHASH=$(nix path-info --json --json-format 1 "$OUT" 2>/dev/null | jq -r '.[].narHash' || true)
             if [ -n "$SRCHASH" ] && [ "$SRCHASH" != "null" ]; then
               python3 - "$f" "$SRCHASH" <<'PYEOF'
