@@ -318,7 +318,7 @@ jobs:
             if [ -z "$OUT" ]; then
               echo "  $pkg: eval failed, queuing anyway"
               NEEDS="$NEEDS $pkg"
-            elif nix path-info --store "https://github.com/${{ github.repository }}/releases/download/nixcache-$pkg" "$OUT" >/dev/null 2>&1; then
+            elif nix path-info --store "https://github.com/${{ github.repository }}/releases/download/nixcache" "$OUT" >/dev/null 2>&1; then
               echo "  $pkg: binary published, skipping"
             else
               echo "  $pkg: binary missing, queuing"

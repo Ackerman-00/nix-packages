@@ -73,7 +73,6 @@ jobs:
           # shellcheck disable=SC2206
           ARR=($PKGS)
           echo "TARGET_PKG=${ARR[0]}" >> "$GITHUB_ENV"
-          echo "TAG=nixcache-${ARR[0]}" >> "$GITHUB_ENV"
           echo "PACKAGE_LIST=$PKGS" >> "$GITHUB_ENV"
           echo "queue: $PKGS -> this run builds: ${ARR[0]}"
 
@@ -86,15 +85,14 @@ jobs:
           # and probe its narinfo on the rolling tag. Published (and not
           # force-rebuild) => skip build+publish for this target, STILL relay
           # the remainder. Missing => full honest compile below.
-          # Per-package rolling tag (nixcache-<pkg>): each package owns its
-          # tag, so "which files belong to which package" is answered by the
-          # tag name itself - no cross-package manifests, no shared GC.
+          # Single shared rolling tag; per-package manifests answer
+          # "which files belong to which package" (see publish step).
           pkg="${{ env.TARGET_PKG }}"
           OUT=$(nix eval --raw ".#packages.x86_64-linux.$pkg.outPath" 2>/dev/null || true)
           # Presence probe the Nix-native way (`nix path-info --store`, per
           # manual): one parallel query, no curl loops, no rate-limit class.
           if [ "${{ github.event.inputs.force_rebuild }}" != "true" ] && [ -n "$OUT" ] \
-            && nix path-info --store "https://github.com/${{ github.repository }}/releases/download/nixcache-$pkg" "$OUT" >/dev/null 2>&1; then
+            && nix path-info --store "https://github.com/${{ github.repository }}/releases/download/nixcache" "$OUT" >/dev/null 2>&1; then
             echo ">>> $pkg ($(basename "$OUT" | cut -d- -f1)) already published - skipping build, relaying remainder"
             echo "SKIP_TARGET=true" >> "$GITHUB_ENV"
           else
@@ -246,16 +244,15 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          TAG="nixcache-${{ env.TARGET_PKG }}"
-          gh release view "$TAG" -R "$REPO" 2>/dev/null \
-            || gh release create "$TAG" -R "$REPO" \
+          gh release view "nixcache" -R "$REPO" 2>/dev/null \
+            || gh release create "nixcache" -R "$REPO" \
                  --title "Nix Binary Cache (rolling)" \
-                 --notes "Nix binary cache for ${{ env.TARGET_PKG }} (static file backend): add https://github.com/$REPO/releases/download/nixcache-${{ env.TARGET_PKG }} as substituter + nixcache.pub key. Rolling release: only the current rev is kept." \
+                 --notes "Nix binary cache (static file backend): add https://github.com/$REPO/releases/download/nixcache as substituter + nixcache.pub key. Rolling release holding current revs only; per-package manifests (manifest-<pkg>.txt) map files to packages." \
                  --prerelease
           retry_upload() {
             local file="$1" max=3
             for i in $(seq 1 $max); do
-              if gh release upload "$TAG" -R "$REPO" "$file" --clobber 2>&1; then
+              if gh release upload "nixcache" -R "$REPO" "$file" --clobber 2>&1; then
                 return 0
               fi
               sleep 10
@@ -263,7 +260,7 @@ jobs:
             echo "::error::upload failed: $file"
             return 1
           }
-          existing=$(gh release view "$TAG" -R "$REPO" --json assets --jq '.assets[].name' || true)
+          existing=$(gh release view "nixcache" -R "$REPO" --json assets --jq '.assets[].name' || true)
           while read -r f; do
             [ -z "$f" ] && continue
             if [ "${{ github.event.inputs.force_rebuild }}" != "true" ] \
@@ -273,18 +270,26 @@ jobs:
             fi
             retry_upload "nixcache-stage/$f"
           done < manifest-new.txt
-          # Single-package tag: manifest = this run's files, nothing else.
-          cp manifest-new.txt manifest.txt
+          # One release, per-package manifests: this run writes
+          # manifest-<pkg>.txt (exactly this rev's files); manifest.txt is
+          # the union over all per-package manifests. GC keeps the union.
+          cp manifest-new.txt "manifest-${{ env.TARGET_PKG }}.txt"
+          retry_upload "manifest-${{ env.TARGET_PKG }}.txt"
+          gh release download nixcache -R "$REPO" -p 'manifest-*.txt' -D /tmp/oldmanifests 2>/dev/null || true
+          # Union with previously published per-package manifests (downloaded
+          # above; may be absent on first run - the || true keeps that safe).
+          # GC below keeps exactly this union: current revs live, old ones die.
+          { cat /tmp/oldmanifests/manifest-*.txt 2>/dev/null || true; cat manifest-new.txt; } | sort -u > manifest.txt
           retry_upload "manifest.txt"
           echo ">>> GC: tag keeps ONLY current-rev files"
           RUN_START=$(date -u +%FT%TZ -d "@$(( $(date +%s) - 600 ))" 2>/dev/null || date -u -v-10M +%FT%TZ)
-          gh release view "$TAG" -R "$REPO" --json assets \
+          gh release view "nixcache" -R "$REPO" --json assets \
             --jq '.assets[] | "\(.name) \(.createdAt)"' 2>/dev/null | while read -r asset created; do
             [ -z "$asset" ] && continue
-            [ "$asset" = "manifest.txt" ] && continue
+            [[ "$asset" == manifest*.txt ]] && continue
             if ! grep -qFx "$asset" manifest.txt && [[ "$created" < "$RUN_START" ]]; then
               echo "  deleting stale: $asset ($created)"
-              gh release delete-asset "$TAG" "$asset" --repo "$REPO" -y 2>/dev/null || true
+              gh release delete-asset "nixcache" "$asset" --repo "$REPO" -y 2>/dev/null || true
             fi
           done
 

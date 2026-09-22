@@ -1,67 +1,54 @@
+# nix-packages
+
+Nix flake with packages nixpkgs trails behind on: prebuilt binaries plus
+rev-pinned source builds, all with a free binary cache.
+
 ## Packages
 
-* `rootapp` — Root Field Service Management (AppImage, x86_64 + aarch64)
-* `zen-browser` — Beautifully designed, privacy-focused Firefox fork (tar.xz, x86_64 + aarch64)
-* `niri-unstable` — Scrollable-tiling Wayland compositor, latest upstream commit (source build, x86_64; binary via our cache below)
-* `xwayland-satellite-unstable` — Rootless Xwayland integration, latest upstream commit (source build, x86_64; binary via our cache below)
-* `umbriel-unstable` — Wayland compositor built on wlroots and umbrielfx, latest upstream commit (source build, x86_64; binary via our cache below)
+| package | type |
+|---|---|
+| `rootapp` | AppImage (x86_64 + aarch64) |
+| `zen-browser` | tarball (x86_64 + aarch64) |
+| `niri-unstable` | latest upstream commit, source-built |
+| `xwayland-satellite-unstable` | latest upstream commit, source-built |
+| `umbriel-unstable` | latest upstream commit, source-built |
+| `mixtapes` | source-built (x86_64 + aarch64) |
+| `splayer-next` | tarball (x86_64 + aarch64) |
 
-> X11 note (upstream contract): niri and umbriel discover `xwayland-satellite`
-> on PATH at runtime and spawn it on demand - it is an OPTIONAL companion,
-> never bundled. For X11 apps, install `xwayland-satellite-unstable`
-> alongside your compositor; without it, everything native still works.
-* `mixtapes` — Modern, Linux-first YouTube Music player built with GTK4 and Libadwaita (source, x86_64 + aarch64)
-* `splayer-next` — Cross-platform desktop music player with rich lyric support (tar.gz, x86_64 + aarch64)
+Install `xwayland-satellite-unstable` alongside a compositor for X11 apps
+(upstream contract: discovered on PATH at runtime, never bundled).
 
----
+Compositors need `services.displayManager.sessionPackages` to appear in
+login managers — plain `environment.systemPackages` is not scanned.
 
-## How to Add it to your NixOS System
-
-### 1. Add the Input
-
-Open your system's `flake.nix` and add this repository to your `inputs` block:
+## Use
 
 ```nix
-  inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    
-    # Add Ackerman's Packages Flake
-    nix-packages = {
-      url = "github:Ackerman-00/nix-packages";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-  };
-
+inputs.nix-packages.url = "github:Ackerman-00/nix-packages";
 ```
 
-### 2. Install the Packages
-
-Pass the inputs to your system configuration and add the desired applications to your `environment.systemPackages`:
-
 ```nix
-  outputs = { self, nixpkgs, ... } @ inputs: {
-    nixosConfigurations.yourhostname = nixpkgs.lib.nixosSystem {
-      system = "x86_64-linux";
-      specialArgs = { inherit inputs; };
-      modules = [
-        ./configuration.nix
-        
-        ({ pkgs, inputs, ... }: {
-          environment.systemPackages = [
-            # Add the packages here
-            inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.rootapp
-            inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.zen-browser
-            inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.niri-unstable
-            inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.xwayland-satellite-unstable
-            inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.umbriel-unstable
-            inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.mixtapes
-            inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.splayer-next
-          ];
-        })
-      ];
-    };
-  };
+outputs = { self, nixpkgs, ... } @ inputs: {
+  nixosConfigurations.yourhostname = nixpkgs.lib.nixosSystem {
+    system = "x86_64-linux";
+    specialArgs = { inherit inputs; };
+    modules = [
+      ./configuration.nix
 
+      ({ pkgs, inputs, ... }: {
+        environment.systemPackages = [
+          inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.rootapp
+          inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.zen-browser
+          inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.niri-unstable
+          inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.xwayland-satellite-unstable
+          inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.umbriel-unstable
+          inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.mixtapes
+          inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.splayer-next
+        ];
+      })
+    ];
+  };
+};
 ```
 
 ## Run Without Installing
@@ -76,20 +63,14 @@ nix run github:Ackerman-00/nix-packages#mixtapes
 nix run github:Ackerman-00/nix-packages#splayer-next
 ```
 
-## Binary cache (free, no Cachix)
+## Binary cache
 
-Every CI-built rev of the `-unstable` source packages is signed and published
-to the rolling `nixcache` release on this repo (same pattern as void-nexus).
-Add it once — `flake update` then fetches binaries, never compiles:
+Signed rolling release `nixcache`; per-package `manifest-<pkg>.txt`
+indexes. Old revs are garbage-collected automatically.
 
 ```nix
-# One rolling tag per package (nixcache-<pkg>); add the ones you use.
 nix.settings = {
-  substituters = [
-    "https://github.com/Ackerman-00/nix-packages/releases/download/nixcache-niri-unstable"
-    "https://github.com/Ackerman-00/nix-packages/releases/download/nixcache-xwayland-satellite-unstable"
-    "https://github.com/Ackerman-00/nix-packages/releases/download/nixcache-umbriel-unstable"
-  ];
+  substituters = [ "https://github.com/Ackerman-00/nix-packages/releases/download/nixcache" ];
   trusted-public-keys = [ "nixcache:5i/lXrpYqlfr2c6eNC6aieaaS8CvZMzDbGB2dhlz3qI=" ];
 };
 ```
