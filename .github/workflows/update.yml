@@ -126,16 +126,18 @@ jobs:
           import re, sys
           path, cur, head, srchash = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
           text = open(path).read()
+          # rev and src hash are replaced INDEPENDENTLY (no proximity
+          # assumption: rev may live in a let-binding far from src, e.g.
+          # umbriel-unstable.nix). First 40-hex rev wins (the pin); first
+          # bare `hash = "sha256-..."` wins (the src hash - cargoHash lines
+          # carry a `cargo` prefix so the lowercase pattern skips them).
           if cur:
-              text = text.replace(cur, head)
-          # replace ONLY the src hash: first hash="sha256-..." after the rev line
-          m = re.search(r'(rev = "[0-9a-f]{40}"[^;]*?hash = ")sha256-[^"]+(")', text, re.S)
-          if not m:
-              m = re.search(r'(rev = "[0-9a-f]{40}".{0,400}?hash = ")([^"]*)(")', text, re.S)
-          assert m, "src hash anchor not found"
-          text = text[:m.start()] + m.group(1) + srchash + m.group(3) + text[m.end():]
+              text, n = re.subn(r'rev = "[0-9a-f]{40}"', f'rev = "{head}"', text, count=1)
+              assert n == 1, "rev line not found"
+          text, n = re.subn(r'(?m)^(\s*)hash = "sha256-[^"]*"', rf'\g<1>hash = "{srchash}"', text, count=1)
+          assert n == 1, "src hash line not found"
           open(path, "w").write(text)
-          print("  src hash refreshed")
+          print("  rev + src hash refreshed")
           PYEOF
             # 2. version stamp + NIRI_BUILD_COMMIT (niri) / fallback (umbriel).
             # cargoHash is deliberately NOT touched here: nixcache.yml fills
@@ -145,9 +147,9 @@ jobs:
             if [ "$1" = "niri-unstable" ]; then
               sed -i "s|NIRI_BUILD_COMMIT = \"[0-9a-f]*\"|NIRI_BUILD_COMMIT = \"$SHORT\"|" "$f"
             fi
-            if [ "$1" = "umbriel-unstable" ]; then
-              sed -i "s|fallback: '[^']*'|fallback: '$SHORT'|" "$f"
-            fi
+            # umbriel-unstable needs NO fallback rewrite: its postPatch derives
+            # the short rev from the `rev` binding automatically. (An updater
+            # sed here once rewrote the search pattern itself - never again.)
             UPDATED=1
             echo "  $1: metadata bumped (${CUR:0:12} -> $SHORT); cargoHash + compile gate belong to nixcache.yml"
           }

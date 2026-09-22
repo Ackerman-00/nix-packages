@@ -29,6 +29,9 @@
   systemd,
 }:
 
+let
+  rev = "51e6528ecf3d787531d9f8e536df24196edea17d";
+in
 stdenv.mkDerivation {
   pname = "umbriel-unstable";
   # nixpkgs git-snapshot convention: sorts below any future real release,
@@ -41,7 +44,7 @@ stdenv.mkDerivation {
   src = fetchFromGitHub {
     owner = "noctalia-dev";
     repo = "umbriel";
-    rev = "51e6528ecf3d787531d9f8e536df24196edea17d";
+    inherit rev;
     hash = "sha256-x6CjlsKIaZ47do3S5b7X6SFKCqxhL/2uExXiP3di9ig=";
   };
 
@@ -82,11 +85,10 @@ stdenv.mkDerivation {
 
   postPatch = ''
     # Sandbox has no .git, so meson's vcs_tag falls back to 'unknown'.
-    # Inject the pinned short rev instead (mirrors niri's NIRI_BUILD_COMMIT
-    # practice): `umbriel --version` then prints base version + real commit.
-    # Rewritten by update.yml on every bump.
+    # Inject the pinned short rev (derived from `rev` above - always in sync,
+    # no updater rewriting needed): `umbriel --version` prints base + commit.
     substituteInPlace meson.build \
-      --replace-fail "fallback: '51e6528'" "fallback: 'c6d7d57'"
+      --replace-fail "fallback: 'unknown'" "fallback: '${builtins.substring 0 7 rev}'"
   '';
 
   postInstall = ''
