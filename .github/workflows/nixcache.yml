@@ -41,7 +41,7 @@ concurrency:
 
 jobs:
   build-sign-publish:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 340
     steps:
       - uses: actions/checkout@v5
@@ -264,7 +264,7 @@ jobs:
           while read -r f; do
             [ -z "$f" ] && continue
             if [ "${{ github.event.inputs.force_rebuild }}" != "true" ] \
-               && echo "$existing" | grep -qFx "$f"; then
+               && grep -qFx "$f" <<< "$existing"; then
               echo "  skip (already published): $f"
               continue
             fi
@@ -276,9 +276,10 @@ jobs:
           cp manifest-new.txt "manifest-${{ env.TARGET_PKG }}.txt"
           retry_upload "manifest-${{ env.TARGET_PKG }}.txt"
           gh release download nixcache -R "$REPO" -p 'manifest-*.txt' -D /tmp/oldmanifests 2>/dev/null || true
-          # Union with previously published per-package manifests (downloaded
-          # above; may be absent on first run - the || true keeps that safe).
-          # GC below keeps exactly this union: current revs live, old ones die.
+          # Replace (never merge) THIS package's old manifest: its previous
+          # rev's files must drop out of the union or GC can never clean them.
+          # Other packages' manifests pass through untouched.
+          rm -f "/tmp/oldmanifests/manifest-${{ env.TARGET_PKG }}.txt"
           { cat /tmp/oldmanifests/manifest-*.txt 2>/dev/null || true; cat manifest-new.txt; } | sort -u > manifest.txt
           retry_upload "manifest.txt"
           echo ">>> GC: tag keeps ONLY current-rev files"
