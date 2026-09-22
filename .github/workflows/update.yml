@@ -96,11 +96,14 @@ jobs:
             echo "  $1: ${REV:0:7} -> $SHORT ($NV)"
           }
 
-          # ---- Rust overlay packages (rev-pinned source builds) ----
-          # niri-unstable + xwayland-satellite-unstable track upstream HEAD.
-          # nix-update cannot do these (no tags consumed + cargoHash must be
-          # refreshed per rev). rust_rev_update does all of it IN CI and
-          # build-gates: a rev that doesn't compile is reverted, never pushed.
+          # ---- Rust/meson rev-pinned source builds (r-ryantm role) ----
+          # niri-unstable + xwayland-satellite-unstable + umbriel-unstable track
+          # upstream HEAD. METADATA ONLY, never compile here (canonical split:
+          # r-ryantm bumps versions, Hydra builds after merge): refresh rev +
+          # src hash + version stamps, commit, push. nixcache.yml (Hydra role)
+          # fills cargoHash via its own build and COMPILE-GATES there; the
+          # schedule agent (reviewer role) fixes anything red. A `nix build`
+          # in this job is a layering violation - 2-3 min metadata, nothing more.
           rust_rev_update() {
             local f="pkgs/$1.nix" O="$2" R="$3"
             local CUR HEAD OUT SRCHASH GOT DATE SHORT
@@ -134,20 +137,9 @@ jobs:
           open(path, "w").write(text)
           print("  src hash refreshed")
           PYEOF
-            # 2. cargoHash via the standard error trick (never guessed).
-            # MESON/packages without cargoHash skip this entirely (guard):
-            # running the trick there would compile-then-revert needlessly.
-            if grep -q 'cargoHash' "$f"; then
-              sed -i 's|cargoHash = "sha256-[^"]*"|cargoHash = ""|; s|cargoHash = lib.fakeHash|cargoHash = ""|' "$f"
-              GOT=$(nix build ".#packages.x86_64-linux.$1" --print-out-paths 2>&1 | grep -oP -m1 'got:\s*\Ksha256-[A-Za-z0-9+/=]+' || true)
-              if [ -z "$GOT" ]; then
-                echo "  WARN: $1 no cargoHash captured (build may have failed early) - reverting file"
-                git checkout -- "$f"
-                return 0
-              fi
-              sed -i "s|cargoHash = \"\"|cargoHash = \"$GOT\"|" "$f"
-            fi
-            # 3. version stamp + NIRI_BUILD_COMMIT (niri only)
+            # 2. version stamp + NIRI_BUILD_COMMIT (niri) / fallback (umbriel).
+            # cargoHash is deliberately NOT touched here: nixcache.yml fills
+            # it from its own build (self-heal), which also compile-gates.
             DATE=$(date -u +%F); SHORT=${HEAD:0:7}
             sed -i -E "s|^(\\s*)version = \"0-unstable-[^\"]*\"|\\1version = \"0-unstable-$DATE\"|" "$f"
             if [ "$1" = "niri-unstable" ]; then
@@ -156,14 +148,8 @@ jobs:
             if [ "$1" = "umbriel-unstable" ]; then
               sed -i "s|fallback: '[^']*'|fallback: '$SHORT'|" "$f"
             fi
-            # 4. BUILD GATE: full compile must exit 0 or the bump is reverted
-            if nix build ".#packages.x86_64-linux.$1" --print-out-paths >/dev/null 2>&1; then
-              UPDATED=1
-              echo "  $1: bumped + BUILD GATE PASS"
-            else
-              echo "  WARN: $1 new rev does not compile - reverting (last-good pin holds)"
-              git checkout -- "$f"
-            fi
+            UPDATED=1
+            echo "  $1: metadata bumped (${CUR:0:12} -> $SHORT); cargoHash + compile gate belong to nixcache.yml"
           }
 
           for f in pkgs/*.nix; do

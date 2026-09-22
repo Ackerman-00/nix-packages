@@ -135,7 +135,12 @@ jobs:
             fi
           fi
           sed -i 's|cargoHash = "sha256-[^"]*"|cargoHash = ""|; s|cargoHash = lib.fakeHash|cargoHash = ""|' "$f"
-          GOT=$(nix build ".#packages.x86_64-linux.$pkg" --print-out-paths 2>&1 | grep -oP -m1 'got:\s*\Ksha256-[A-Za-z0-9+/=]+' || true)
+          # Same visibility+bound discipline as update.yml: stream via tee,
+          # cap at 30 min, never hang the relay on a stalled vendor fetch.
+          timeout 1800 nix build ".#packages.x86_64-linux.$pkg" --print-out-paths 2>&1 | tee /tmp/cargo-try.log || true
+          GOT=$(grep -oP -m1 'got:\s*\Ksha256-[A-Za-z0-9+/=]+' /tmp/cargo-try.log || true)
+          echo "--- vendor attempt tail:"
+          tail -n 8 /tmp/cargo-try.log || true
           if [ -z "$GOT" ]; then
             echo "::error::$pkg hash self-heal failed - update.yml will retry next cycle"
             git checkout -- "$f"
