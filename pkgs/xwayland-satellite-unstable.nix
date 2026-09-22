@@ -56,6 +56,11 @@ rustPlatform.buildRustPackage {
     "man"
   ];
 
+  postPatch = ''
+    substituteInPlace resources/xwayland-satellite.service \
+      --replace-fail '/usr/local/bin/xwayland-satellite' "$out/bin/xwayland-satellite"
+  '';
+
   # All integration tests require a running display server
   doCheck = false;
 
@@ -81,5 +86,12 @@ rustPlatform.buildRustPackage {
     license = lib.licenses.mpl20;
     mainProgram = "xwayland-satellite";
     platforms = lib.platforms.linux;
+    sourceProvenance = with lib.sourceTypes; [ fromSource ];
+    maintainers = [
+      {
+        name = "Ackerman-00";
+        github = "Ackerman-00";
+      }
+    ];
   };
 }
