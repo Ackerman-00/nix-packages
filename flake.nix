@@ -37,6 +37,7 @@
           };
           niri-unstable = pkgs.callPackage ./pkgs/niri-unstable.nix { inherit lib; };
           umbriel-unstable = pkgs.callPackage ./pkgs/umbriel-unstable.nix { inherit lib; };
+          xdg-desktop-portal-umbriel-unstable = pkgs.callPackage ./pkgs/xdg-desktop-portal-umbriel-unstable.nix { inherit lib; };
         in
         {
           zen-browser = zen-browser;
@@ -45,6 +46,7 @@
           splayer-next = splayer-next;
           xwayland-satellite-unstable = xwayland-satellite-unstable;
           umbriel-unstable = umbriel-unstable;
+          xdg-desktop-portal-umbriel-unstable = xdg-desktop-portal-umbriel-unstable;
           niri-unstable = niri-unstable;
         }
         // lib.optionalAttrs (system == "x86_64-linux") {

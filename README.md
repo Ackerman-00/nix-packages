@@ -12,6 +12,7 @@ rev-pinned source builds, all with a free binary cache.
 | `niri-unstable` | latest upstream commit, source-built |
 | `xwayland-satellite-unstable` | latest upstream commit, source-built |
 | `umbriel-unstable` | latest upstream commit, source-built |
+| `xdg-desktop-portal-umbriel-unstable` | umbriel's portal backend (screencast/sharing), latest commit |
 | `mixtapes` | source-built (x86_64 + aarch64) |
 | `splayer-next` | tarball (x86_64 + aarch64) |
 
@@ -42,6 +43,7 @@ outputs = { self, nixpkgs, ... } @ inputs: {
           inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.niri-unstable
           inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.xwayland-satellite-unstable
           inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.umbriel-unstable
+            inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.xdg-desktop-portal-umbriel-unstable
           inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.mixtapes
           inputs.nix-packages.packages.${pkgs.stdenv.hostPlatform.system}.splayer-next
         ];
@@ -59,6 +61,7 @@ nix run github:Ackerman-00/nix-packages#zen-browser
 nix run github:Ackerman-00/nix-packages#niri-unstable
 nix run github:Ackerman-00/nix-packages#xwayland-satellite-unstable
 nix run github:Ackerman-00/nix-packages#umbriel-unstable
+nix run github:Ackerman-00/nix-packages#xdg-desktop-portal-umbriel-unstable
 nix run github:Ackerman-00/nix-packages#mixtapes
 nix run github:Ackerman-00/nix-packages#splayer-next
 ```

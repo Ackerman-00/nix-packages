@@ -261,7 +261,8 @@ jobs:
                  - UPSTREAM REFERENCE FILES (exact, fetch every run - no substitutes):
                    niri-unstable <- niri-wm/niri `flake.nix` (nativeBuildInputs/buildInputs/features), `Cargo.toml` + `Cargo.lock` (git deps!), `build.rs`, repo tree (new dirs break filesets);
                    xwayland-satellite-unstable <- Supreeeme/xwayland-satellite `Cargo.toml` ([dependencies]/[features]/[build-dependencies] incl. vergen), `build.rs`, `resources/`, `macros/` + `wl_drm/` + `testwl/` (workspace members);
-                   umbriel-unstable <- noctalia-dev/umbriel `nix/package.nix` (THEIR inputs list, the sibling reference), `meson.build` (dependency() + find_program() + option() deltas), `subprojects/*.wrap` (umbrielfx!), repo tree.
+                   umbriel-unstable <- noctalia-dev/umbriel `nix/package.nix` (THEIR inputs list, the sibling reference), `meson.build` (dependency() + find_program() + option() deltas), `subprojects/*.wrap` (umbrielfx!), repo tree;
+                   xdg-desktop-portal-umbriel-unstable <- noctalia-dev/xdg-desktop-portal-umbriel `meson.build` (dependency() version floors!), repo tree.
                    Diff each against our expression the SAME run; any delta in either direction is resolved with evidence (adopt theirs, keep ours with upstream proof, record verdict per line).
                  - GH FETCH DISCIPLINE (2026-09-22, token-safe + poison-aware):
                    fetch files ONLY via `gh api repos/<owner>/<repo>/contents/<path>?ref=<ref> --jq '.content' | base64 -d` (authenticated = 5000/hr; targeted, no full clones). NEVER raw.githubusercontent.com (60/hr shared quota + ~5min CDN staleness) and NEVER bare `curl https://api.github.com` (burns the shared quota, 304s still cost).

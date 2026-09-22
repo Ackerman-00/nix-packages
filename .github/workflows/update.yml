@@ -178,6 +178,11 @@ jobs:
               rust_rev_update "$name" "noctalia-dev" "umbriel"
               continue
             fi
+            if [ "$name" = "xdg-desktop-portal-umbriel-unstable" ]; then
+              echo ">>> rust-rev xdg-desktop-portal-umbriel-unstable (noctalia-dev HEAD)"
+              rust_rev_update "$name" "noctalia-dev" "xdg-desktop-portal-umbriel"
+              continue
+            fi
 
             # Pre-route tagless upstreams STRAIGHT to -git mode: running
             # nix-update against them only produces a VersionError traceback
