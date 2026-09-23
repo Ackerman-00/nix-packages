@@ -196,13 +196,36 @@ jobs:
           nix path-info -r --json --json-format 1 $TARGET_OUTS \
             | jq -r 'keys[]' > /tmp/closure.txt
           echo "closure paths: $(wc -l < /tmp/closure.txt)"
-          # Upstream dedup the Nix-native way: ONE parallel `nix path-info
-          # --store` over the whole closure (mass-query batched where the
-          # cache supports it) instead of sequential per-path curls.
-          # Empty result = publish everything (safe side, skip logic dedups).
-          nix path-info --store https://cache.nixos.org $(cat /tmp/closure.txt) 2>/dev/null > /tmp/upstream-have.txt || true
-          grep -vxF -f /tmp/upstream-have.txt /tmp/closure.txt > /tmp/wanted.txt || cp /tmp/closure.txt /tmp/wanted.txt
-          echo "publishing $(wc -l < /tmp/wanted.txt) of $(wc -l < /tmp/closure.txt) store paths"
+          # Upstream dedup — FAULT-TOLERANT, one query per path.
+          #
+          # BUG FIXED 2026-09-23: the old single batched call
+          #   nix path-info --store <url> $(cat closure.txt)
+          # fails ATOMICALLY if ANY path is missing upstream — and the package
+          # we just built is ALWAYS missing upstream. Result: upstream-have.txt
+          # came out EMPTY, `grep -v -f <empty-file>` returns EVERY line, so the
+          # FULL closure was staged (425 paths / 850 files for mixtapes). Those
+          # 850 individual `gh release upload` calls then exhausted the
+          # GITHUB_TOKEN budget (1000 req/hour/repo, official GitHub docs) and
+          # the loop died with HTTP 403. It would ALSO have hit GitHub's hard
+          # 1000-assets-per-release cap (927 assets were already on the tag).
+          # Verified: querying a path mix + a custom path yields exit=1 and
+          # EMPTY stdout; querying deps alone succeeds. Query each path
+          # independently so a single miss cannot poison the whole batch.
+          rm -rf /tmp/upq && mkdir -p /tmp/upq
+          xargs -a /tmp/closure.txt -P 8 -I{} \
+            sh -c 'nix path-info --store https://cache.nixos.org "$1" >"/tmp/upq/$(basename "$1").out" 2>/dev/null || true' _ {}
+          : > /tmp/upstream-have.txt
+          cat /tmp/upq/*.out >> /tmp/upstream-have.txt 2>/dev/null || true
+          rm -rf /tmp/upq
+          # wanted = closure minus upstream = only what WE built (custom pkgs).
+          # Guard the empty-upstream case explicitly rather than relying on
+          # grep's empty-pattern-file edge case.
+          if [ -s /tmp/upstream-have.txt ]; then
+            grep -vxF -f /tmp/upstream-have.txt /tmp/closure.txt > /tmp/wanted.txt || cp /tmp/closure.txt /tmp/wanted.txt
+          else
+            cp /tmp/closure.txt /tmp/wanted.txt
+          fi
+          echo "publishing $(wc -l < /tmp/wanted.txt) of $(wc -l < /tmp/closure.txt) store paths (upstream already has $(wc -l < /tmp/upstream-have.txt))"
           # shellcheck disable=SC2046
           nix copy --to "file://$PWD/nixcache-stage" $(cat /tmp/wanted.txt)
           # SHIP ALLOWLIST (2026-09-22): a file:// cache dir accumulates more
@@ -246,18 +269,28 @@ jobs:
                  --title "Nix Binary Cache (rolling)" \
                  --notes "Nix binary cache (static file backend): add https://github.com/$REPO/releases/download/nixcache as substituter + nixcache.pub key. Rolling release holding current revs only; per-package manifests (manifest-<pkg>.txt) map files to packages." \
                  --prerelease
-          retry_upload() {
-            local file="$1" max=3
+          # BATCHED upload: `gh release upload` accepts MANY files per call and
+          # resolves the release ONCE. The old loop ran one `gh release upload`
+          # per file — each invocation re-GETs /releases/tags/nixcache (1
+          # api.github.com call) and, with --clobber, also lists all 900+ assets
+          # (10 paginated calls) to diff names. 850 files x ~11 calls blew the
+          # 1000 req/hour GITHUB_TOKEN budget mid-loop (HTTP 403). One batched
+          # call = one release resolution for the whole manifest.
+          retry_upload_batch() {
+            # $@ = files; caller guarantees they are NOT already published
+            # (unless force_rebuild, where --clobber is intentional).
+            local max=3
             for i in $(seq 1 $max); do
-              if gh release upload "nixcache" -R "$REPO" "$file" --clobber 2>&1; then
+              if gh release upload "nixcache" -R "$REPO" "$@" 2>&1; then
                 return 0
               fi
               sleep 10
             done
-            echo "::error::upload failed: $file"
+            echo "::error::upload failed: $*"
             return 1
           }
           existing=$(gh release view "nixcache" -R "$REPO" --json assets --jq '.assets[].name' || true)
+          : > /tmp/to-upload.txt
           while read -r f; do
             [ -z "$f" ] && continue
             if [ "${{ github.event.inputs.force_rebuild }}" != "true" ] \
@@ -265,29 +298,62 @@ jobs:
               echo "  skip (already published): $f"
               continue
             fi
-            retry_upload "nixcache-stage/$f"
+            echo "nixcache-stage/$f" >> /tmp/to-upload.txt
           done < manifest-new.txt
+          N_NEW=$(wc -l < /tmp/to-upload.txt)
+          echo "uploading $N_NEW files (batched)"
+          if [ "$N_NEW" -gt 0 ]; then
+            if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
+              # force_rebuild republishes identical names -> must clobber.
+              xargs -a /tmp/to-upload.txt gh release upload "nixcache" -R "$REPO" --clobber
+            else
+              xargs -a /tmp/to-upload.txt gh release upload "nixcache" -R "$REPO"
+            fi
+          fi
           # One release, per-package manifests: this run writes
           # manifest-<pkg>.txt (exactly this rev's files); manifest.txt is
           # the union over all per-package manifests. GC keeps the union.
+          # manifests: 2 files, one batched call (single release resolution).
           cp manifest-new.txt "manifest-${{ env.TARGET_PKG }}.txt"
-          retry_upload "manifest-${{ env.TARGET_PKG }}.txt"
           gh release download nixcache -R "$REPO" -p 'manifest-*.txt' -D /tmp/oldmanifests 2>/dev/null || true
           # Replace (never merge) THIS package's old manifest: its previous
           # rev's files must drop out of the union or GC can never clean them.
           # Other packages' manifests pass through untouched.
           rm -f "/tmp/oldmanifests/manifest-${{ env.TARGET_PKG }}.txt"
           { cat /tmp/oldmanifests/manifest-*.txt 2>/dev/null || true; cat manifest-new.txt; } | sort -u > manifest.txt
-          retry_upload "manifest.txt"
-          echo ">>> GC: tag keeps ONLY current-rev files"
+          retry_upload_batch "manifest-${{ env.TARGET_PKG }}.txt" "manifest.txt"
+          echo ">>> GC: tag keeps ONLY current-rev files (budget-aware)"
           RUN_START=$(date -u +%FT%TZ -d "@$(( $(date +%s) - 600 ))" 2>/dev/null || date -u -v-10M +%FT%TZ)
+          # Each `gh release delete-asset` is 1 api.github.com call and the
+          # GITHUB_TOKEN budget is only 1000 req/hour/repo. The full-closure
+          # bug left ~900 debris assets on the tag — deleting them all in one
+          # run would exhaust the budget by itself and starve the relay
+          # dispatch (that is exactly how the relay 403'd). Hard-cap deletions
+          # per run AND poll /rate_limit (that endpoint is free/not counted)
+          # every 50 deletes; pause below the floor and let the next scheduled
+          # run continue. GC self-heals across runs instead of going red.
+          GC_MAX_PER_RUN=300
+          GC_BUDGET_FLOOR=150
+          deleted=0
           gh release view "nixcache" -R "$REPO" --json assets \
             --jq '.assets[] | "\(.name) \(.createdAt)"' 2>/dev/null | while read -r asset created; do
             [ -z "$asset" ] && continue
             [[ "$asset" == manifest*.txt ]] && continue
             if ! grep -qFx "$asset" manifest.txt && [[ "$created" < "$RUN_START" ]]; then
+              if [ "$deleted" -ge "$GC_MAX_PER_RUN" ]; then
+                echo "  GC cap reached ($GC_MAX_PER_RUN); remaining debris deferred to next run"
+                break
+              fi
+              if [ $(( deleted % 50 )) -eq 0 ]; then
+                remaining=$(gh api /rate_limit --jq '.resources.core.remaining' 2>/dev/null || echo 9999)
+                if [ "${remaining:-9999}" -lt "$GC_BUDGET_FLOOR" ]; then
+                  echo "  GC paused: $remaining calls left (< $GC_BUDGET_FLOOR); deferred to next run"
+                  break
+                fi
+              fi
               echo "  deleting stale: $asset ($created)"
               gh release delete-asset "nixcache" "$asset" --repo "$REPO" -y 2>/dev/null || true
+              deleted=$((deleted + 1))
             fi
           done
 
