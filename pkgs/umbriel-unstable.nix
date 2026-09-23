@@ -28,7 +28,7 @@
 }:
 
 let
-  rev = "81bc6613a8d4e502bfab296c94ee0ca9bab63477";
+  rev = "bbca89f13f0166ff370d250f611b4f0600b57db6";
 in
 stdenv.mkDerivation {
   pname = "umbriel-unstable";
@@ -43,7 +43,7 @@ stdenv.mkDerivation {
     owner = "noctalia-dev";
     repo = "umbriel";
     inherit rev;
-    hash = "sha256-NtZR+m1DBuKX+hJGQ3DzZAwf3qmDFCKNZLORikdynK8=";
+    hash = "sha256-ckhgX9vnImfX93rorOmXXZDE503V7VF5eVegNqocsiI=";
   };
 
   nativeBuildInputs = [

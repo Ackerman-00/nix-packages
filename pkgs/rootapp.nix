@@ -11,7 +11,7 @@ let
     };
     aarch64-linux = pkgs.fetchurl {
       url = "https://installer.rootapp.com/installer/Linux/Arm64/Root.AppImage";
-      hash = "sha256-4IzV0Tckye15+zaoAMwBRTx8nxKmR/E8w0uUZCoV5lc=";
+      hash = "sha256-I2WOe73iXwK3cmPv3mPlLPEwRd2BDEZnuuuedi0Bb0w=";
     };
   };
 
