@@ -16,6 +16,9 @@
       forAllSystems = lib.genAttrs systems;
     in
     {
+      # `nix fmt` entry point (nixfmt-rfc-style, same as nixpkgs).
+      formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt-rfc-style);
+
       packages = forAllSystems (
         system:
         let

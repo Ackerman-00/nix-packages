@@ -25,6 +25,11 @@ let
       urllib3
       mutagen
       pydbus
+      # requirements.txt also lists yt-dlp-get-pot{,-rustypipe} (PO-Token
+      # provider); NOT in nixpkgs (nix eval: undefined variable, 2026-09-23)
+      # and upstream's own flake drops it via `or null` too — yt-dlp degrades
+      # to ungated formats only. strenum = requirements' StrEnum==0.4.15.
+      strenum
       mprisify
     ]
   );
