@@ -220,19 +220,19 @@ def test_nix_package(name, expr_path, workdir, timeout=7200):
     script = r"""
 set -u
 printf '[safe]\n\tdirectory = *\n' > /root/.gitconfig
+export NIX_CONFIG="experimental-features = nix-command flakes"
 cd /repo || { echo "REPO_MOUNT_FAIL"; exit 9; }
-EX="--extra-experimental-features nix-command flakes"
 ATTR=".#packages.x86_64-linux.__NAME__"
-if nix $EX build "$ATTR" --print-out-paths -o "/tmp/result-__NAME__" \
+if nix build "$ATTR" --print-out-paths -o "/tmp/result-__NAME__" \
      > /tmp/nb.out 2> /tmp/nb.err; then
-  echo "BUILD_OK $(cat /tmp/nb.out)"
+  echo "BUILD_OK $(head -1 /tmp/nb.out)"
 else
   echo "BUILD_FAIL"; tail -30 /tmp/nb.err; exit 10
 fi
 NBINS=$(ls "/tmp/result-__NAME__/bin" 2>/dev/null | wc -l)
 echo "BINS=$NBINS"
 for a in --version -version --help -h; do
-  if timeout 45 nix $EX run "$ATTR" -- "$a" > /tmp/smoke.out 2>&1; then
+  if timeout 45 nix run "$ATTR" -- "$a" > /tmp/smoke.out 2>&1; then
     echo "SMOKE_OK flag=$a"; exit 0
   fi
 done
