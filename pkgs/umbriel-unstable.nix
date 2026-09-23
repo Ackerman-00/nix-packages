@@ -28,13 +28,13 @@
 }:
 
 let
-  rev = "ac6e757cca9afdbe061f1156187a30dc0ae320a6";
+  rev = "81bc6613a8d4e502bfab296c94ee0ca9bab63477";
 in
 stdenv.mkDerivation {
   pname = "umbriel-unstable";
   # nixpkgs git-snapshot convention: sorts below any future real release,
   # so the upgrade path back to stable stays clean.
-  version = "0-unstable-2026-09-22";
+  version = "0-unstable-2026-09-23";
 
   strictDeps = true;
   __structuredAttrs = true;
@@ -43,7 +43,7 @@ stdenv.mkDerivation {
     owner = "noctalia-dev";
     repo = "umbriel";
     inherit rev;
-    hash = "sha256-0LGj9P4Mk4xPGbn1iXiouRwIBuCw4nTc+whttNqEI0M=";
+    hash = "sha256-NtZR+m1DBuKX+hJGQ3DzZAwf3qmDFCKNZLORikdynK8=";
   };
 
   nativeBuildInputs = [
