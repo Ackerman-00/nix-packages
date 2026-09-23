@@ -179,20 +179,104 @@ def test_fedora_package(name, nvra, spec_path, workdir):
     return result
 
 
-def test_nix_package(name, expr_path, workdir):
-    commands = [
-        "nix-build '<nixpkgs>' -A %s 2>&1 | tail -10" % name,
-        "nix-store --query --requisites $(nix-build '<nixpkgs>' -A %s 2>/dev/null) 2>&1 | wc -l" % name,
-    ]
-    rc, out, err = docker_run("nixos/nix", commands, timeout=600)
+NIX_IMAGE = "nixos/nix"
+# Persistent named volume mounted at /nix. Docker copy-on-first-use seeds it
+# from the image, so every subsequent fresh container shares one store: our
+# own intermediate build reuse only (no substituters, no action caches - the
+# owner decision in nixcache.yml bans binary caching of *results*, and each
+# package is still compiled honestly inside a fresh nixos/nix container).
+NIX_STORE_VOLUME = "docker-sweep-nixstore"
+
+
+def nix_image_digest(image=NIX_IMAGE):
+    """Repo digest (img:sha256:...) of the local/remote image, for receipts."""
+    try:
+        res = subprocess.run(
+            ["docker", "image", "inspect", "--format",
+             "{{index .RepoDigests 0}}", image],
+            capture_output=True, timeout=60)
+        digest = res.stdout.decode(errors="ignore").strip()
+        if digest:
+            return digest.split("@")[-1]
+    except Exception:
+        pass
+    return "sha256:unknown"
+
+
+def test_nix_package(name, expr_path, workdir, timeout=7200):
+    """Build THIS repo's flake package in a fresh nixos/nix container.
+
+    2026-09-23 fix: the old code ran `nix-build '<nixpkgs>' -A <name>`, which
+    can never succeed - none of the packages in pkgs/*.nix exist in nixpkgs,
+    so every nix receipt was a false failure. The flake is the source of
+    truth: mount the repo at /repo, build
+    /repo#packages.x86_64-linux.<name>, then smoke-run the result through
+    `nix run` (version/help flags). Exit markers:
+      rc=0   BUILD_OK + smoke OK (or binary present = documented caveat)
+      rc=10  BUILD_FAIL
+      rc=11  built but no binary in result/bin and every smoke flag failed
+    """
+    repo = str(Path(workdir).resolve())
+    script = r"""
+set -u
+printf '[safe]\n\tdirectory = *\n' > /root/.gitconfig
+cd /repo || { echo "REPO_MOUNT_FAIL"; exit 9; }
+EX="--extra-experimental-features nix-command flakes"
+ATTR=".#packages.x86_64-linux.__NAME__"
+if nix $EX build "$ATTR" --print-out-paths -o "/tmp/result-__NAME__" \
+     > /tmp/nb.out 2> /tmp/nb.err; then
+  echo "BUILD_OK $(cat /tmp/nb.out)"
+else
+  echo "BUILD_FAIL"; tail -30 /tmp/nb.err; exit 10
+fi
+NBINS=$(ls "/tmp/result-__NAME__/bin" 2>/dev/null | wc -l)
+echo "BINS=$NBINS"
+for a in --version -version --help -h; do
+  if timeout 45 nix $EX run "$ATTR" -- "$a" > /tmp/smoke.out 2>&1; then
+    echo "SMOKE_OK flag=$a"; exit 0
+  fi
+done
+echo "SMOKE_LAST: $(tail -c 400 /tmp/smoke.out 2>/dev/null)"
+if [ "$NBINS" -gt 0 ]; then
+  echo "SMOKE_CAVEAT binary-present (documented env caveat, see details)"; exit 0
+fi
+echo "SMOKE_FAIL no binary, all flags failed"; exit 11
+""".replace("__NAME__", name)
+    try:
+        res = subprocess.run(
+            ["docker", "run", "--rm", "--network=host",
+             "-v", "%s:/repo" % repo,
+             "-v", "%s:/nix" % NIX_STORE_VOLUME,
+             NIX_IMAGE, "bash", "-c", script],
+            capture_output=True, timeout=timeout)
+        rc = res.returncode
+        out = res.stdout.decode(errors="ignore")
+        err = res.stderr.decode(errors="ignore")
+    except subprocess.TimeoutExpired:
+        rc, out, err = -1, "", "TIMEOUT after %ds" % timeout
+    except Exception as e:
+        rc, out, err = -1, "", str(e)
     combined = out + err
+    digest = nix_image_digest()
     result = {"package": name, "status": STATUS_PASS, "details": ""}
-    if rc != 0 and "error" in combined.lower():
+    marker = ""
+    for line in out.splitlines():
+        if line.startswith(("BUILD_OK", "SMOKE_OK", "SMOKE_CAVEAT", "BINS=",
+                            "BUILD_FAIL", "SMOKE_FAIL")):
+            marker += ("; " if marker else "") + line.strip()
+    if rc == 10:
         result["status"] = STATUS_INSTALL_FAIL
-        result["details"] = "nix-build failed: %s" % combined[-500:]
+        result["details"] = "nix build failed: %s" % combined[-500:]
         return result
-    lines = combined.strip().splitlines()
-    result["details"] = "built + closure verified (%s deps)" % (lines[-1] if lines else "?")
+    if rc == 11:
+        result["status"] = STATUS_BINARY_FAIL
+        result["details"] = "no binary/smoke: %s" % combined[-500:]
+        return result
+    if rc != 0:
+        result["status"] = STATUS_INSTALL_FAIL
+        result["details"] = "container failed (rc=%d): %s" % (rc, combined[-500:])
+        return result
+    result["details"] = "%s (img:nixos/nix %s)" % (marker, digest)
     return result
 
 
